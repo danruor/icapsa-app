@@ -94,7 +94,8 @@ router.get('/', async (req, res) => {
     const quotes = await prisma.quote.findMany({
       include: {
         createdBy: { select: { id: true, name: true } },
-        items: true
+        items: true,
+        project: { select: { id: true, name: true, color: true } }
       },
       orderBy: { createdAt: 'desc' }
     })
@@ -118,7 +119,8 @@ router.get('/:id', async (req, res) => {
       where: { id: req.params.id },
       include: {
         createdBy: { select: { id: true, name: true } },
-        items: { include: { product: { select: { id: true, name: true } } } }
+        items: { include: { product: { select: { id: true, name: true } } } },
+        project: { select: { id: true, name: true } }
       }
     })
     if (!quote) return res.status(404).json({ error: 'Cotización no encontrada' })
@@ -133,7 +135,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/quotes
 router.post('/', async (req, res) => {
   try {
-    const { clientName, clientEmail, clientPhone, notes, taxRate, validUntil, items } = req.body
+    const { clientName, clientEmail, clientPhone, notes, taxRate, validUntil, items, projectId } = req.body
     if (!clientName) return res.status(400).json({ error: 'El nombre del cliente es requerido' })
 
     // Generar folio: COT-YYYY-NNNN
@@ -147,6 +149,7 @@ router.post('/', async (req, res) => {
         taxRate: taxRate !== undefined ? parseFloat(taxRate) : 16,
         validUntil: validUntil ? new Date(validUntil) : null,
         createdById: req.user.id,
+        projectId: projectId || null,
         items: {
           create: (items || []).map(it => ({
             name: it.name,
@@ -170,7 +173,7 @@ router.post('/', async (req, res) => {
 // PATCH /api/quotes/:id - actualizar cotización (datos + items)
 router.patch('/:id', async (req, res) => {
   try {
-    const { clientName, clientEmail, clientPhone, notes, taxRate, validUntil, status, items } = req.body
+    const { clientName, clientEmail, clientPhone, notes, taxRate, validUntil, status, items, projectId } = req.body
 
     // Si vienen items, reemplazar todos
     if (items) {
@@ -186,6 +189,7 @@ router.patch('/:id', async (req, res) => {
         ...(notes !== undefined && { notes }),
         ...(taxRate !== undefined && { taxRate: parseFloat(taxRate) }),
         ...(status !== undefined && { status }),
+        ...(projectId !== undefined && { projectId: projectId || null }),
         ...(validUntil !== undefined && { validUntil: validUntil ? new Date(validUntil) : null }),
         ...(items && {
           items: {
@@ -289,6 +293,20 @@ router.get('/summary/payments', async (req, res) => {
     res.json({ totalQuoted, totalPaid, totalPending, countPaid, countPending, countPartial, totalQuotes: quotes.length })
   } catch (err) {
     res.status(500).json({ error: 'Error al obtener resumen' })
+  }
+})
+
+// GET /api/quotes/list/projects - proyectos disponibles para vincular
+router.get('/list/projects', async (req, res) => {
+  try {
+    const projects = await prisma.project.findMany({
+      where: { status: { in: ['ACTIVE', 'PAUSED'] } },
+      select: { id: true, name: true, color: true },
+      orderBy: { name: 'asc' }
+    })
+    res.json(projects)
+  } catch {
+    res.status(500).json({ error: 'Error al obtener proyectos' })
   }
 })
 
