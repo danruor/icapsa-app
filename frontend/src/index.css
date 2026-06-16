@@ -3,7 +3,33 @@
 @tailwind utilities;
 
 @layer base {
-  body {
+  html, body {
     @apply bg-gray-50 text-gray-900 antialiased;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
   }
+
+  /* Evitar que iOS haga zoom al enfocar un input (requiere font-size >= 16px) */
+  input, select, textarea {
+    font-size: 16px;
+  }
+
+  /* Safe areas para el notch del iPhone */
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* Scroll suave en iOS */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Ocultar scrollbars horizontales feos en móvil pero mantener funcionalidad */
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.15);
+  border-radius: 3px;
 }
