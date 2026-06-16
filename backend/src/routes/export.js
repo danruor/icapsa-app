@@ -146,4 +146,90 @@ router.get('/project/:id.pdf', async (req, res) => {
   }
 })
 
+
+// GET /api/export/quote/:id.pdf - cotización en PDF
+router.get('/quote/:id.pdf', async (req, res) => {
+  try {
+    if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: 'Sin permisos' })
+
+    const quote = await prisma.quote.findUnique({
+      where: { id: req.params.id },
+      include: { items: true, createdBy: { select: { name: true } } }
+    })
+    if (!quote) return res.status(404).json({ error: 'No encontrada' })
+
+    const subtotal = quote.items.reduce((s, i) => s + (i.unitPrice * i.quantity - i.discount), 0)
+    const tax = subtotal * (quote.taxRate / 100)
+    const total = subtotal + tax
+
+    const doc = new PDFDocument({ margin: 50, size: 'LETTER' })
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="${quote.folio}.pdf"`)
+    doc.pipe(res)
+
+    // Encabezado
+    doc.fontSize(22).fillColor('#0F6E56').text('ICAPSA', 50, 50)
+    doc.fontSize(9).fillColor('#888').text('Ingeniería de Calidad Aplicada S.A. de C.V.', 50, 75)
+    doc.fontSize(18).fillColor('#111').text('COTIZACIÓN', 400, 50, { align: 'right' })
+    doc.fontSize(11).fillColor('#0F6E56').text(quote.folio, 400, 75, { align: 'right' })
+    doc.fontSize(9).fillColor('#888').text(new Date(quote.createdAt).toLocaleDateString('es-MX'), 400, 92, { align: 'right' })
+
+    doc.moveTo(50, 115).lineTo(562, 115).strokeColor('#ddd').stroke()
+
+    // Cliente
+    doc.fontSize(10).fillColor('#888').text('CLIENTE', 50, 130)
+    doc.fontSize(12).fillColor('#111').text(quote.clientName, 50, 145)
+    if (quote.clientEmail) doc.fontSize(9).fillColor('#666').text(quote.clientEmail, 50, 162)
+    if (quote.clientPhone) doc.fontSize(9).fillColor('#666').text(quote.clientPhone, 50, 175)
+
+    // Tabla de items
+    let y = 210
+    doc.rect(50, y, 512, 22).fill('#1D9E75')
+    doc.fontSize(9).fillColor('#fff')
+    doc.text('Concepto', 58, y + 7)
+    doc.text('Cant.', 320, y + 7)
+    doc.text('P. Unit.', 380, y + 7)
+    doc.text('Importe', 480, y + 7, { width: 75, align: 'right' })
+    y += 22
+
+    quote.items.forEach((it, idx) => {
+      const importe = it.unitPrice * it.quantity - it.discount
+      if (idx % 2 === 0) doc.rect(50, y, 512, 20).fill('#f7f7f7')
+      doc.fontSize(9).fillColor('#111')
+      doc.text(it.name, 58, y + 6, { width: 255 })
+      doc.text(`${it.quantity} ${it.unit}`, 320, y + 6)
+      doc.text(`$${it.unitPrice.toLocaleString('es-MX', {minimumFractionDigits: 2})}`, 380, y + 6)
+      doc.text(`$${importe.toLocaleString('es-MX', {minimumFractionDigits: 2})}`, 480, y + 6, { width: 75, align: 'right' })
+      y += 20
+    })
+
+    // Totales
+    y += 10
+    doc.fontSize(10).fillColor('#666')
+    doc.text('Subtotal:', 380, y, { width: 90, align: 'right' })
+    doc.text(`$${subtotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}`, 470, y, { width: 85, align: 'right' })
+    y += 18
+    doc.text(`IVA (${quote.taxRate}%):`, 380, y, { width: 90, align: 'right' })
+    doc.text(`$${tax.toLocaleString('es-MX', {minimumFractionDigits: 2})}`, 470, y, { width: 85, align: 'right' })
+    y += 20
+    doc.rect(380, y - 4, 182, 26).fill('#0F6E56')
+    doc.fontSize(12).fillColor('#fff')
+    doc.text('TOTAL:', 388, y + 3)
+    doc.text(`$${total.toLocaleString('es-MX', {minimumFractionDigits: 2})}`, 470, y + 3, { width: 85, align: 'right' })
+
+    // Notas y validez
+    if (quote.notes) {
+      doc.fontSize(9).fillColor('#888').text('Notas: ' + quote.notes, 50, y + 50, { width: 300 })
+    }
+    if (quote.validUntil) {
+      doc.fontSize(9).fillColor('#888').text(`Válida hasta: ${new Date(quote.validUntil).toLocaleDateString('es-MX')}`, 50, y + 70)
+    }
+
+    doc.end()
+  } catch (err) {
+    console.error('Error PDF cotización:', err.message)
+    res.status(500).json({ error: 'Error al generar PDF' })
+  }
+})
+
 export default router
