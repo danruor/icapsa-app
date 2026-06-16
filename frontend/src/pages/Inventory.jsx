@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Package, AlertTriangle, Boxes, DollarSign, Search, Trash2, Pencil, ArrowUp, ArrowDown, History } from 'lucide-react'
-import api from '../lib/api'
+import { Plus, Package, AlertTriangle, Boxes, DollarSign, Search, Trash2, Pencil, ArrowUp, ArrowDown, History, Download } from 'lucide-react'
+import api, { downloadFile } from '../lib/api'
 
 export default function Inventory() {
   const qc = useQueryClient()
@@ -99,15 +99,21 @@ export default function Inventory() {
 
   return (
     <div className="p-4 md:p-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Inventario</h1>
           <p className="text-sm text-gray-500 mt-1">{filtered.length} artículos</p>
         </div>
-        <button onClick={openNew}
-          className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg">
-          <Plus size={16} /> Nuevo artículo
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => downloadFile(`/export/inventory.xlsx${filterProject ? '?projectId=' + filterProject : ''}`, 'inventario-icapsa.xlsx')}
+            className="flex items-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-2 rounded-lg">
+            <Download size={16} /> <span className="hidden sm:inline">Excel</span>
+          </button>
+          <button onClick={openNew}
+            className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg">
+            <Plus size={16} /> <span className="hidden sm:inline">Nuevo artículo</span><span className="sm:hidden">Nuevo</span>
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}
