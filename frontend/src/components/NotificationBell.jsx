@@ -11,7 +11,7 @@ const typeIcon = {
   project_added: '📁'
 }
 
-export default function NotificationBell() {
+export default function NotificationBell({ dark = false }) {
   const [open, setOpen] = useState(false)
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -42,7 +42,7 @@ export default function NotificationBell() {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen(o => !o)} className="relative text-gray-400 hover:text-white transition-colors">
+      <button onClick={() => setOpen(o => !o)} className={`relative transition-colors ${dark ? "text-gray-400 hover:text-white" : "text-gray-500 hover:text-gray-700"}`}>
         <Bell size={20} />
         {unread > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] min-w-[16px] h-4 rounded-full flex items-center justify-center px-1 font-medium">
@@ -54,7 +54,7 @@ export default function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
+          <div className="absolute left-0 lg:left-auto lg:right-0 mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <span className="text-sm font-medium text-gray-900">Notificaciones</span>
               {unread > 0 && (
