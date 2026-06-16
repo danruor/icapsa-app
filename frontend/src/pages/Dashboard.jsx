@@ -26,14 +26,14 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Bienvenido, {user?.name}</h1>
         <p className="text-sm text-gray-500 mt-1">Resumen de actividad</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {stats.map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -45,7 +45,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Tareas por estado */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="text-sm font-medium text-gray-700 mb-4">Tareas por estado</h2>
@@ -85,7 +85,7 @@ export default function Dashboard() {
         </div>
 
         {/* Tareas recientes */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 col-span-2">
+        <div className="bg-white rounded-xl border border-gray-200 p-5 lg:col-span-2">
           <h2 className="text-sm font-medium text-gray-700 mb-4">Tareas recientes</h2>
           <div className="divide-y divide-gray-100">
             {data?.recentTasks?.map(task => (
