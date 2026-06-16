@@ -102,7 +102,7 @@ router.get('/', async (req, res) => {
     const withTotals = quotes.map(q => {
       const subtotal = q.items.reduce((s, i) => s + (i.unitPrice * i.quantity - i.discount), 0)
       const tax = subtotal * (q.taxRate / 100)
-      return { ...q, subtotal, tax, total: subtotal + tax }
+      return { ...q, subtotal, tax, total: subtotal + tax, balance: Math.max(0, (subtotal + tax) - q.paidAmount) }
     })
     res.json(withTotals)
   } catch (err) {
@@ -215,6 +215,80 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: 'Cotización eliminada' })
   } catch {
     res.status(500).json({ error: 'Error al eliminar cotización' })
+  }
+})
+
+
+// PATCH /api/quotes/:id/payment - registrar estado de pago
+router.patch('/:id/payment', async (req, res) => {
+  try {
+    const { paymentStatus, paidAmount } = req.body
+
+    const quote = await prisma.quote.findUnique({
+      where: { id: req.params.id },
+      include: { items: true }
+    })
+    if (!quote) return res.status(404).json({ error: 'No encontrada' })
+
+    const data = {}
+    if (paymentStatus !== undefined) {
+      data.paymentStatus = paymentStatus
+      // Si se marca como pagada, registrar fecha
+      if (paymentStatus === 'PAID') {
+        data.paidAt = new Date()
+        // Calcular total para marcar como pagado completo
+        const subtotal = quote.items.reduce((s, i) => s + (i.unitPrice * i.quantity - i.discount), 0)
+        data.paidAmount = subtotal * (1 + quote.taxRate / 100)
+      } else if (paymentStatus === 'PENDING') {
+        data.paidAt = null
+        data.paidAmount = 0
+      }
+    }
+    if (paidAmount !== undefined) {
+      data.paidAmount = parseFloat(paidAmount)
+      // Determinar estado según monto pagado
+      const subtotal = quote.items.reduce((s, i) => s + (i.unitPrice * i.quantity - i.discount), 0)
+      const total = subtotal * (1 + quote.taxRate / 100)
+      if (data.paidAmount >= total) {
+        data.paymentStatus = 'PAID'
+        data.paidAt = new Date()
+      } else if (data.paidAmount > 0) {
+        data.paymentStatus = 'PARTIAL'
+      } else {
+        data.paymentStatus = 'PENDING'
+      }
+    }
+
+    const updated = await prisma.quote.update({ where: { id: req.params.id }, data })
+    res.json(updated)
+  } catch (err) {
+    console.error('Error registrar pago:', err.message)
+    res.status(500).json({ error: 'Error al registrar pago' })
+  }
+})
+
+// GET /api/quotes/summary/payments - resumen financiero
+router.get('/summary/payments', async (req, res) => {
+  try {
+    const quotes = await prisma.quote.findMany({ include: { items: true } })
+
+    let totalQuoted = 0, totalPaid = 0, totalPending = 0
+    let countPaid = 0, countPending = 0, countPartial = 0
+
+    quotes.forEach(q => {
+      const subtotal = q.items.reduce((s, i) => s + (i.unitPrice * i.quantity - i.discount), 0)
+      const total = subtotal * (1 + q.taxRate / 100)
+      totalQuoted += total
+      totalPaid += q.paidAmount
+      totalPending += Math.max(0, total - q.paidAmount)
+      if (q.paymentStatus === 'PAID') countPaid++
+      else if (q.paymentStatus === 'PARTIAL') countPartial++
+      else countPending++
+    })
+
+    res.json({ totalQuoted, totalPaid, totalPending, countPaid, countPending, countPartial, totalQuotes: quotes.length })
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener resumen' })
   }
 })
 
