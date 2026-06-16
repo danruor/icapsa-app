@@ -1,13 +1,25 @@
 import jwt from 'jsonwebtoken'
+import { PrismaClient } from '@prisma/client'
 
-export const authenticate = (req, res, next) => {
+const prisma = new PrismaClient()
+
+export const authenticate = async (req, res, next) => {
   const header = req.headers.authorization
   if (!header?.startsWith('Bearer '))
     return res.status(401).json({ error: 'Token requerido' })
 
   try {
     const token = header.split(' ')[1]
-    req.user = jwt.verify(token, process.env.JWT_SECRET)
+    const payload = jwt.verify(token, process.env.JWT_SECRET)
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.id },
+      select: { id: true, email: true, role: true, isActive: true }
+    })
+    if (!user || !user.isActive)
+      return res.status(401).json({ error: 'Usuario inactivo o no encontrado' })
+
+    req.user = user
     next()
   } catch {
     res.status(401).json({ error: 'Token inválido o expirado' })
@@ -17,5 +29,11 @@ export const authenticate = (req, res, next) => {
 export const requireRole = (...roles) => (req, res, next) => {
   if (!roles.includes(req.user.role))
     return res.status(403).json({ error: 'Sin permisos suficientes' })
+  next()
+}
+
+export const requireAdmin = (req, res, next) => {
+  if (!['SUPER_ADMIN', 'ADMIN'].includes(req.user.role))
+    return res.status(403).json({ error: 'Requiere permisos de administrador' })
   next()
 }
