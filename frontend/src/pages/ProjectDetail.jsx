@@ -21,7 +21,7 @@ export default function ProjectDetail() {
 
   // Task form
   const [showTaskForm, setShowTaskForm] = useState(false)
-  const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'MEDIUM', dueDate: '' })
+  const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'MEDIUM', dueDate: '', assigneeId: '' })
 
   // Project edit form
   const [showEditProject, setShowEditProject] = useState(false)
@@ -38,9 +38,14 @@ export default function ProjectDetail() {
     queryFn: () => api.get(`/projects/${id}`).then(r => r.data)
   })
 
+  const { data: users = [] } = useQuery({
+    queryKey: ['users-list'],
+    queryFn: () => api.get('/auth/users').then(r => r.data)
+  })
+
   const createTask = useMutation({
     mutationFn: (data) => api.post('/tasks', { ...data, projectId: id }),
-    onSuccess: () => { qc.invalidateQueries(['project', id]); setShowTaskForm(false); setTaskForm({ title: '', description: '', priority: 'MEDIUM', dueDate: '' }) }
+    onSuccess: () => { qc.invalidateQueries(['project', id]); setShowTaskForm(false); setTaskForm({ title: '', description: '', priority: 'MEDIUM', dueDate: '', assigneeId: '' }) }
   })
 
   const updateTask = useMutation({
@@ -142,9 +147,9 @@ export default function ProjectDetail() {
 
       {/* TAB: Tasks (Kanban) */}
       {tab === 'tasks' && (
-        <div className="flex gap-4 flex-1 overflow-x-auto pb-4">
+        <div className="flex gap-3 md:gap-4 flex-1 overflow-x-auto pb-4 scrollbar-thin">
           {columns.map(col => (
-            <div key={col.key} className="flex-1 min-w-[220px]">
+            <div key={col.key} className="flex-1 min-w-[160px] sm:min-w-[220px]">
               <div className={`rounded-xl ${col.color} p-3`}>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-medium text-gray-700">{col.label}</h3>
@@ -166,6 +171,14 @@ export default function ProjectDetail() {
                         </select>
                       </div>
                       {task.dueDate && <p className="text-xs text-orange-400 mt-1">{new Date(task.dueDate).toLocaleDateString('es-MX')}</p>}
+                      {task.assignee && (
+                        <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-gray-50">
+                          <div className="w-5 h-5 rounded-full bg-brand-50 flex items-center justify-center text-[9px] font-medium text-brand-600">
+                            {task.assignee.name.split(' ').map(n => n[0]).slice(0,2).join('')}
+                          </div>
+                          <span className="text-xs text-gray-500">{task.assignee.name}</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -234,8 +247,8 @@ export default function ProjectDetail() {
 
       {/* MODAL: New Task */}
       {showTaskForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-4">Nueva tarea</h2>
             <div className="space-y-3">
               <input type="text" placeholder="Título de la tarea" value={taskForm.title}
@@ -253,6 +266,14 @@ export default function ProjectDetail() {
                 <input type="date" value={taskForm.dueDate} onChange={e => setTaskForm(f => ({ ...f, dueDate: e.target.value }))}
                   className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
               </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Asignar a</label>
+                <select value={taskForm.assigneeId} onChange={e => setTaskForm(f => ({ ...f, assigneeId: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+                  <option value="">Sin asignar</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
             </div>
             <div className="flex gap-2 mt-4">
               <button onClick={() => setShowTaskForm(false)} className="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg">Cancelar</button>
@@ -267,8 +288,8 @@ export default function ProjectDetail() {
 
       {/* MODAL: Edit Project */}
       {showEditProject && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-4">Editar proyecto</h2>
             <div className="space-y-3">
               <div>
