@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Package, CheckSquare, Pencil, Trash2, AlertTriangle, Search } from 'lucide-react'
-import api from '../lib/api'
+import { Plus, Package, CheckSquare, Pencil, Trash2, AlertTriangle, Search, Activity, Download, FileText, Camera, Image as ImageIcon } from 'lucide-react'
+import api, { downloadFile } from '../lib/api'
 
 const columns = [
   { key: 'TODO',        label: 'Por hacer',   color: 'bg-gray-100' },
@@ -43,6 +43,12 @@ export default function ProjectDetail() {
     queryFn: () => api.get('/auth/users').then(r => r.data)
   })
 
+  const { data: activity = [] } = useQuery({
+    queryKey: ['project-activity', id],
+    queryFn: () => api.get(`/projects/${id}/activity`).then(r => r.data),
+    enabled: tab === 'activity'
+  })
+
   const createTask = useMutation({
     mutationFn: (data) => api.post('/tasks', { ...data, projectId: id }),
     onSuccess: () => { qc.invalidateQueries(['project', id]); setShowTaskForm(false); setTaskForm({ title: '', description: '', priority: 'MEDIUM', dueDate: '', assigneeId: '' }) }
@@ -69,6 +75,25 @@ export default function ProjectDetail() {
     mutationFn: (itemId) => api.delete(`/inventory/${itemId}`),
     onSuccess: () => { qc.invalidateQueries(['project', id]); qc.invalidateQueries(['inventory']); qc.invalidateQueries(['inventory-summary']) }
   })
+
+  const [uploadingTask, setUploadingTask] = useState(null)
+
+  const uploadPhoto = async (taskId, file) => {
+    setUploadingTask(taskId)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('taskId', taskId)
+      fd.append('projectId', id)
+      await api.post('/files/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      qc.invalidateQueries(['project', id])
+      qc.invalidateQueries(['task-files', taskId])
+    } catch (err) {
+      alert('Error al subir la foto')
+    } finally {
+      setUploadingTask(null)
+    }
+  }
 
   const openEditProject = () => {
     setProjForm({
@@ -124,12 +149,18 @@ export default function ProjectDetail() {
             <Pencil size={16} />
           </button>
         </div>
-        <button
-          onClick={() => tab === 'tasks' ? setShowTaskForm(true) : openNewInv()}
-          className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg"
-        >
-          <Plus size={16} /> {tab === 'tasks' ? 'Nueva tarea' : 'Agregar pieza'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => downloadFile(`/export/project/${id}.pdf`, 'proyecto.pdf')}
+            className="flex items-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-2 rounded-lg">
+            <FileText size={16} /> <span className="hidden sm:inline">PDF</span>
+          </button>
+          {tab !== 'activity' && (
+            <button onClick={() => tab === 'tasks' ? setShowTaskForm(true) : openNewInv()}
+              className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg">
+              <Plus size={16} /> <span className="hidden sm:inline">{tab === 'tasks' ? 'Nueva tarea' : 'Agregar pieza'}</span>
+            </button>
+          )}
+        </div>
       </div>
       {project?.description && <p className="text-sm text-gray-500 mb-4">{project.description}</p>}
 
@@ -142,6 +173,10 @@ export default function ProjectDetail() {
         <button onClick={() => setTab('inventory')}
           className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === 'inventory' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
           <Package size={15} /> Inventario <span className="text-xs text-gray-400">({inventory.length})</span>
+        </button>
+        <button onClick={() => setTab('activity')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === 'activity' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          <Activity size={15} /> Actividad
         </button>
       </div>
 
@@ -179,6 +214,22 @@ export default function ProjectDetail() {
                           <span className="text-xs text-gray-500">{task.assignee.name}</span>
                         </div>
                       )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <label className="flex items-center gap-1 text-xs text-gray-400 hover:text-brand-500 cursor-pointer">
+                          {uploadingTask === task.id ? (
+                            <span className="text-xs">Subiendo...</span>
+                          ) : (
+                            <><Camera size={13} /> Foto</>
+                          )}
+                          <input type="file" accept="image/*" capture="environment" className="hidden"
+                            onChange={e => e.target.files[0] && uploadPhoto(task.id, e.target.files[0])} />
+                        </label>
+                        {task._count?.files > 0 && (
+                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                            <ImageIcon size={12} /> {task._count.files}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -241,6 +292,38 @@ export default function ProjectDetail() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: Activity */}
+      {tab === 'activity' && (
+        <div className="flex-1">
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            {activity.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Activity size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Sin actividad registrada aún</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {activity.map(a => (
+                  <div key={a.id} className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center text-xs font-medium text-brand-600 flex-shrink-0">
+                      {a.user.name.split(' ').map(n => n[0]).slice(0,2).join('')}
+                    </div>
+                    <div className="flex-1 min-w-0 pb-4 border-b border-gray-50">
+                      <p className="text-sm text-gray-900">
+                        <span className="font-medium">{a.user.name}</span> {a.detail}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {new Date(a.createdAt).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
