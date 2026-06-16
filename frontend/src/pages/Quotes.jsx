@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { FileText, Package, Plus, Pencil, Trash2, Search, Download, X, ShoppingCart } from 'lucide-react'
+import { FileText, Package, Plus, Pencil, Trash2, Search, Download, X, ShoppingCart, DollarSign, FileSpreadsheet, CheckCircle, Clock, Wallet } from 'lucide-react'
 import api, { downloadFile } from '../lib/api'
 
 const statusBadge = {
@@ -11,6 +11,13 @@ const statusBadge = {
   EXPIRED:  'bg-yellow-100 text-yellow-700'
 }
 const statusLabel = { DRAFT: 'Borrador', SENT: 'Enviada', APPROVED: 'Aprobada', REJECTED: 'Rechazada', EXPIRED: 'Vencida' }
+
+const payBadge = {
+  PENDING: 'bg-orange-100 text-orange-700',
+  PARTIAL: 'bg-blue-100 text-blue-700',
+  PAID:    'bg-green-100 text-green-700'
+}
+const payLabel = { PENDING: 'Pendiente', PARTIAL: 'Parcial', PAID: 'Pagada' }
 
 export default function Quotes() {
   const qc = useQueryClient()
@@ -187,15 +194,21 @@ function QuotesView() {
   const qc = useQueryClient()
   const [showBuilder, setShowBuilder] = useState(false)
   const [editingQuote, setEditingQuote] = useState(null)
+  const [payModal, setPayModal] = useState(null)
 
   const { data: quotes = [], isLoading } = useQuery({
     queryKey: ['quotes'],
     queryFn: () => api.get('/quotes').then(r => r.data)
   })
 
+  const { data: summary } = useQuery({
+    queryKey: ['quotes-payment-summary'],
+    queryFn: () => api.get('/quotes/summary/payments').then(r => r.data)
+  })
+
   const remove = useMutation({
     mutationFn: (id) => api.delete(`/quotes/${id}`),
-    onSuccess: () => qc.invalidateQueries(['quotes'])
+    onSuccess: () => { qc.invalidateQueries(['quotes']); qc.invalidateQueries(['quotes-payment-summary']) }
   })
 
   const updateStatus = useMutation({
@@ -203,16 +216,49 @@ function QuotesView() {
     onSuccess: () => qc.invalidateQueries(['quotes'])
   })
 
+  const updatePayment = useMutation({
+    mutationFn: ({ id, ...data }) => api.patch(`/quotes/${id}/payment`, data),
+    onSuccess: () => { qc.invalidateQueries(['quotes']); qc.invalidateQueries(['quotes-payment-summary']); setPayModal(null) }
+  })
+
   if (showBuilder) {
     return <QuoteBuilder
       existing={editingQuote}
-      onClose={() => { setShowBuilder(false); setEditingQuote(null); qc.invalidateQueries(['quotes']) }}
+      onClose={() => { setShowBuilder(false); setEditingQuote(null); qc.invalidateQueries(['quotes']); qc.invalidateQueries(['quotes-payment-summary']) }}
     />
   }
 
+  const cards = [
+    { label: 'Total cotizado', value: summary?.totalQuoted, icon: FileText, color: 'text-brand-500' },
+    { label: 'Cobrado', value: summary?.totalPaid, icon: CheckCircle, color: 'text-green-500' },
+    { label: 'Por cobrar', value: summary?.totalPending, icon: Clock, color: 'text-orange-500' },
+    { label: 'Cotizaciones', value: summary?.totalQuotes, icon: Wallet, color: 'text-gray-400', isCount: true }
+  ]
+
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      {/* Resumen financiero */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {cards.map(({ label, value, icon: Icon, color, isCount }) => (
+          <div key={label} className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Icon size={16} className={color} />
+              <span className="text-xs text-gray-500">{label}</span>
+            </div>
+            <div className="text-xl font-semibold text-gray-900">
+              {isCount ? (value ?? 0) : `$${(value ?? 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}`}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <button onClick={() => downloadFile('/export/quotes.xlsx', 'cotizaciones-icapsa.xlsx')}
+            className="flex items-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-2 rounded-lg">
+            <FileSpreadsheet size={16} /> <span className="hidden sm:inline">Exportar Excel</span>
+          </button>
+        </div>
         <button onClick={() => { setEditingQuote(null); setShowBuilder(true) }}
           className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg">
           <Plus size={16} /> Nueva cotización
@@ -220,21 +266,23 @@ function QuotesView() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-        <table className="w-full text-sm min-w-[680px]">
+        <table className="w-full text-sm min-w-[820px]">
           <thead>
             <tr className="border-b border-gray-100 text-left text-xs text-gray-500">
               <th className="px-4 py-3 font-medium">Folio</th>
               <th className="px-4 py-3 font-medium">Cliente</th>
               <th className="px-4 py-3 font-medium">Estado</th>
+              <th className="px-4 py-3 font-medium">Pago</th>
               <th className="px-4 py-3 font-medium text-right">Total</th>
+              <th className="px-4 py-3 font-medium text-right">Saldo</th>
               <th className="px-4 py-3 font-medium">Fecha</th>
               <th className="px-4 py-3 font-medium"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {isLoading && <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>}
+            {isLoading && <tr><td colSpan="8" className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>}
             {!isLoading && quotes.length === 0 && (
-              <tr><td colSpan="6" className="px-4 py-12 text-center text-gray-400">
+              <tr><td colSpan="8" className="px-4 py-12 text-center text-gray-400">
                 <FileText size={32} className="mx-auto mb-2 opacity-30" />Sin cotizaciones. Crea la primera.
               </td></tr>
             )}
@@ -251,12 +299,24 @@ function QuotesView() {
                     {Object.entries(statusLabel).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                 </td>
+                <td className="px-4 py-3">
+                  <button onClick={() => setPayModal(q)}
+                    className={`text-xs px-2 py-1 rounded-full font-medium ${payBadge[q.paymentStatus]}`}>
+                    {payLabel[q.paymentStatus]}
+                  </button>
+                </td>
                 <td className="px-4 py-3 text-right font-medium text-gray-900">${q.total.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
+                <td className="px-4 py-3 text-right">
+                  {q.balance > 0
+                    ? <span className="text-orange-600 font-medium">${q.balance.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                    : <span className="text-green-600 text-xs">Liquidada</span>}
+                </td>
                 <td className="px-4 py-3 text-gray-500">{new Date(q.createdAt).toLocaleDateString('es-MX')}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2 justify-end">
-                    <button onClick={() => downloadFile(`/export/quote/${q.id}.pdf`, `${q.folio}.pdf`)} title="PDF" className="text-gray-400 hover:text-brand-500"><Download size={15} /></button>
-                    <button onClick={() => { setEditingQuote(q.id); setShowBuilder(true) }} className="text-gray-400 hover:text-brand-500"><Pencil size={15} /></button>
+                    <button onClick={() => downloadFile(`/export/quote/${q.id}.pdf`, `${q.folio}.pdf`)} title="PDF" className="text-gray-400 hover:text-red-500"><FileText size={15} /></button>
+                    <button onClick={() => downloadFile(`/export/quote/${q.id}.xlsx`, `${q.folio}.xlsx`)} title="Excel" className="text-gray-400 hover:text-green-600"><FileSpreadsheet size={15} /></button>
+                    <button onClick={() => { setEditingQuote(q.id); setShowBuilder(true) }} title="Editar" className="text-gray-400 hover:text-brand-500"><Pencil size={15} /></button>
                     <button onClick={() => { if (confirm(`¿Eliminar ${q.folio}?`)) remove.mutate(q.id) }} className="text-gray-400 hover:text-red-500"><Trash2 size={15} /></button>
                   </div>
                 </td>
@@ -264,6 +324,58 @@ function QuotesView() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Modal de pago */}
+      {payModal && (
+        <PaymentModal quote={payModal} onClose={() => setPayModal(null)}
+          onSave={(data) => updatePayment.mutate({ id: payModal.id, ...data })}
+          saving={updatePayment.isPending} />
+      )}
+    </div>
+  )
+}
+
+function PaymentModal({ quote, onClose, onSave, saving }) {
+  const [paidAmount, setPaidAmount] = useState(String(quote.paidAmount || 0))
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+        <h2 className="text-lg font-semibold mb-1">Registro de pago</h2>
+        <p className="text-sm text-gray-500 mb-4">{quote.folio} — {quote.clientName}</p>
+
+        <div className="bg-gray-50 rounded-lg p-3 mb-4 space-y-1">
+          <div className="flex justify-between text-sm"><span className="text-gray-500">Total:</span><span className="font-medium">${quote.total.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-gray-500">Saldo pendiente:</span><span className="font-medium text-orange-600">${quote.balance.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span></div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <button onClick={() => onSave({ paymentStatus: 'PAID' })}
+              className="flex-1 text-sm py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 font-medium flex items-center justify-center gap-1">
+              <CheckCircle size={15} /> Marcar pagada
+            </button>
+            <button onClick={() => onSave({ paymentStatus: 'PENDING' })}
+              className="flex-1 text-sm py-2 rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 font-medium flex items-center justify-center gap-1">
+              <Clock size={15} /> Pendiente
+            </button>
+          </div>
+
+          <div className="pt-2 border-t border-gray-100">
+            <label className="block text-xs text-gray-500 mb-1">O registrar monto pagado (abono)</label>
+            <div className="flex gap-2">
+              <input type="number" step="0.01" value={paidAmount} onChange={e => setPaidAmount(e.target.value)}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
+              <button onClick={() => onSave({ paidAmount })} disabled={saving}
+                className="bg-brand-500 text-white text-sm px-4 rounded-lg disabled:opacity-50">
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <button onClick={onClose} className="w-full mt-4 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg">Cerrar</button>
       </div>
     </div>
   )
