@@ -58,7 +58,7 @@ router.get('/:id', async (req, res) => {
         : { id: req.params.id, members: { some: { userId: req.user.id } } },
       include: {
         members: { include: { user: { select: { id: true, name: true, email: true, role: true } } } },
-        tasks: { include: { assignee: { select: { id: true, name: true } }, creator: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } },
+        tasks: { include: { assignee: { select: { id: true, name: true } }, creator: { select: { id: true, name: true } }, _count: { select: { files: true } } }, orderBy: { createdAt: 'desc' } },
         files: { include: { uploadedBy: { select: { id: true, name: true } } } },
         inventory: { orderBy: { name: 'asc' } }
       }
@@ -140,6 +140,21 @@ router.delete('/:id/members/:userId', async (req, res) => {
     res.json({ message: 'Miembro removido' })
   } catch {
     res.status(500).json({ error: 'Error al remover miembro' })
+  }
+})
+
+// GET /api/projects/:id/activity - historial de actividad del proyecto
+router.get('/:id/activity', async (req, res) => {
+  try {
+    const activities = await prisma.activity.findMany({
+      where: { projectId: req.params.id },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    })
+    res.json(activities)
+  } catch {
+    res.status(500).json({ error: 'Error al obtener actividad' })
   }
 })
 
