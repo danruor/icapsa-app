@@ -9,7 +9,7 @@ const statusLabel = { ACTIVE: 'Activo', PAUSED: 'Pausado', COMPLETED: 'Completad
 
 export default function Projects() {
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', description: '' })
+  const [form, setForm] = useState({ name: '', description: '', color: '#2196F3' })
   const qc = useQueryClient()
 
   const { data: projects = [], isLoading } = useQuery({
@@ -19,7 +19,7 @@ export default function Projects() {
 
   const create = useMutation({
     mutationFn: (data) => api.post('/projects', data),
-    onSuccess: () => { qc.invalidateQueries(['projects']); setShowForm(false); setForm({ name: '', description: '' }) }
+    onSuccess: () => { qc.invalidateQueries(['projects']); setShowForm(false); setForm({ name: '', description: '', color: '#2196F3' }) }
   })
 
   if (isLoading) return <div className="flex items-center justify-center h-full text-gray-400">Cargando...</div>
@@ -56,6 +56,16 @@ export default function Projects() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500 resize-none"
                 rows={3}
               />
+              <div>
+                <label className="block text-xs text-gray-500 mb-2">Color del proyecto (para el calendario)</label>
+                <div className="flex items-center gap-2">
+                  {['#2196F3', '#1D9E75', '#D85A30', '#D4537E', '#7F77DD', '#BA7517', '#888780'].map(c => (
+                    <button key={c} type="button" onClick={() => setForm(f => ({ ...f, color: c }))}
+                      className="w-7 h-7 rounded-full transition-transform"
+                      style={{ background: c, transform: form.color === c ? 'scale(1.2)' : 'scale(1)', outline: form.color === c ? '2px solid #00000020' : 'none', outlineOffset: '2px' }} />
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="flex gap-2 mt-4">
               <button onClick={() => setShowForm(false)} className="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">Cancelar</button>
