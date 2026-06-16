@@ -55,7 +55,8 @@ router.get('/:id', async (req, res) => {
       include: {
         members: { include: { user: { select: { id: true, name: true, email: true, role: true } } } },
         tasks: { include: { assignee: { select: { id: true, name: true } }, creator: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } },
-        files: { include: { uploadedBy: { select: { id: true, name: true } } } }
+        files: { include: { uploadedBy: { select: { id: true, name: true } } } },
+        inventory: { orderBy: { name: 'asc' } }
       }
     })
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
