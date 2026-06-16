@@ -4,6 +4,8 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
+import Inventory from './pages/Inventory'
+import Calendar from './pages/Calendar'
 import Layout from './components/Layout'
 
 const PrivateRoute = ({ children }) => {
@@ -21,6 +23,8 @@ export default function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:id" element={<ProjectDetail />} />
+          <Route path="inventory" element={<Inventory />} />
+          <Route path="calendar" element={<Calendar />} />
         </Route>
       </Routes>
     </BrowserRouter>
