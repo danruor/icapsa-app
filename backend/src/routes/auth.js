@@ -1,0 +1,78 @@
+import { Router } from 'express'
+import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
+import { PrismaClient } from '@prisma/client'
+import { authenticate } from '../middleware/auth.js'
+
+const router = Router()
+const prisma = new PrismaClient()
+
+// POST /api/auth/register
+router.post('/register', async (req, res) => {
+  try {
+    const { email, password, name } = req.body
+    if (!email || !password || !name)
+      return res.status(400).json({ error: 'Todos los campos son requeridos' })
+
+    const exists = await prisma.user.findUnique({ where: { email } })
+    if (exists)
+      return res.status(409).json({ error: 'El correo ya está registrado' })
+
+    const hashed = await bcrypt.hash(password, 12)
+    const user = await prisma.user.create({
+      data: { email, password: hashed, name },
+      select: { id: true, email: true, name: true, role: true }
+    })
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    )
+
+    res.status(201).json({ user, token })
+  } catch (err) {
+    res.status(500).json({ error: 'Error al registrar usuario' })
+  }
+})
+
+// POST /api/auth/login
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body
+    if (!email || !password)
+      return res.status(400).json({ error: 'Correo y contraseña requeridos' })
+
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user)
+      return res.status(401).json({ error: 'Credenciales incorrectas' })
+
+    const valid = await bcrypt.compare(password, user.password)
+    if (!valid)
+      return res.status(401).json({ error: 'Credenciales incorrectas' })
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    )
+
+    res.json({
+      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      token
+    })
+  } catch (err) {
+    res.status(500).json({ error: 'Error al iniciar sesión' })
+  }
+})
+
+// GET /api/auth/me
+router.get('/me', authenticate, async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: { id: true, email: true, name: true, role: true, createdAt: true }
+  })
+  res.json(user)
+})
+
+export default router
