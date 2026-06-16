@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Plus, FolderKanban, CheckSquare, Users } from 'lucide-react'
+import { Plus, FolderKanban, CheckSquare, Users, Trash2 } from 'lucide-react'
 import api from '../lib/api'
 
 const statusColor = { ACTIVE: 'bg-green-100 text-green-700', PAUSED: 'bg-yellow-100 text-yellow-700', COMPLETED: 'bg-blue-100 text-blue-700', ARCHIVED: 'bg-gray-100 text-gray-500' }
@@ -22,10 +22,23 @@ export default function Projects() {
     onSuccess: () => { qc.invalidateQueries(['projects']); setShowForm(false); setForm({ name: '', description: '', color: '#2196F3' }) }
   })
 
+  const remove = useMutation({
+    mutationFn: (id) => api.delete(`/projects/${id}`),
+    onSuccess: () => qc.invalidateQueries(['projects'])
+  })
+
+  const handleDelete = (e, project) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (confirm(`¿Eliminar el proyecto "${project.name}"? Esto borrará sus tareas e inventario asociado. Esta acción no se puede deshacer.`)) {
+      remove.mutate(project.id)
+    }
+  }
+
   if (isLoading) return <div className="flex items-center justify-center h-full text-gray-400">Cargando...</div>
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Proyectos</h1>
@@ -81,16 +94,22 @@ export default function Projects() {
       )}
 
       {/* Projects grid */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {projects.map(project => (
           <Link key={project.id} to={`/projects/${project.id}`}
             className="bg-white rounded-xl border border-gray-200 p-5 hover:border-brand-500 hover:shadow-sm transition-all"
           >
             <div className="flex items-start justify-between mb-3">
               <FolderKanban size={20} className="text-brand-500" />
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[project.status]}`}>
-                {statusLabel[project.status]}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[project.status]}`}>
+                  {statusLabel[project.status]}
+                </span>
+                <button onClick={(e) => handleDelete(e, project)}
+                  className="text-gray-300 hover:text-red-500 transition-colors">
+                  <Trash2 size={15} />
+                </button>
+              </div>
             </div>
             <h3 className="font-medium text-gray-900 mb-1">{project.name}</h3>
             {project.description && <p className="text-xs text-gray-500 mb-3 line-clamp-2">{project.description}</p>}
