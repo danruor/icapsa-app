@@ -7,6 +7,7 @@ import ProjectDetail from './pages/ProjectDetail'
 import Inventory from './pages/Inventory'
 import Calendar from './pages/Calendar'
 import Settings from './pages/Settings'
+import Quotes from './pages/Quotes'
 import Layout from './components/Layout'
 
 const PrivateRoute = ({ children }) => {
@@ -18,6 +19,11 @@ const AdminRoute = ({ children }) => {
   const user = useAuthStore((s) => s.user)
   const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user?.role)
   return isAdmin ? children : <Navigate to="/dashboard" replace />
+}
+
+const SuperAdminRoute = ({ children }) => {
+  const user = useAuthStore((s) => s.user)
+  return user?.role === 'SUPER_ADMIN' ? children : <Navigate to="/dashboard" replace />
 }
 
 export default function App() {
@@ -33,6 +39,7 @@ export default function App() {
           <Route path="inventory" element={<Inventory />} />
           <Route path="calendar" element={<Calendar />} />
           <Route path="settings" element={<AdminRoute><Settings /></AdminRoute>} />
+          <Route path="quotes" element={<SuperAdminRoute><Quotes /></SuperAdminRoute>} />
         </Route>
       </Routes>
     </BrowserRouter>
