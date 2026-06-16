@@ -34,14 +34,16 @@ model Project {
   name        String
   description String?
   status      ProjectStatus @default(ACTIVE)
+  color       String        @default("#2196F3")
   startDate   DateTime?
   endDate     DateTime?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  members ProjectMember[]
-  tasks   Task[]
-  files   File[]
+  members   ProjectMember[]
+  tasks     Task[]
+  files     File[]
+  inventory InventoryItem[]
 }
 
 enum ProjectStatus {
@@ -127,4 +129,22 @@ model File {
   uploadedBy User     @relation(fields: [uploadedById], references: [id])
   project    Project? @relation(fields: [projectId], references: [id])
   task       Task?    @relation(fields: [taskId], references: [id])
+}
+
+model InventoryItem {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  sku         String?
+  quantity    Int      @default(0)
+  unit        String   @default("pza")
+  minStock    Int      @default(0)
+  location    String?
+  category    String?
+  unitPrice   Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 }
