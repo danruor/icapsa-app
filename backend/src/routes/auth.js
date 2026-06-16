@@ -75,4 +75,18 @@ router.get('/me', authenticate, async (req, res) => {
   res.json(user)
 })
 
+// GET /api/auth/users - lista básica de usuarios (para asignaciones)
+router.get('/users', authenticate, async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, email: true, position: true },
+      orderBy: { name: 'asc' }
+    })
+    res.json(users)
+  } catch {
+    res.status(500).json({ error: 'Error al obtener usuarios' })
+  }
+})
+
 export default router
