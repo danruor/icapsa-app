@@ -32,15 +32,18 @@ router.post('/', async (req, res) => {
 
     const project = await prisma.project.create({
       data: {
-        name, description, startDate, endDate,
+        name, description,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
         ...(color && { color }),
         members: { create: { userId: req.user.id, role: 'ADMIN' } }
       },
       include: { members: true }
     })
     res.status(201).json(project)
-  } catch {
-    res.status(500).json({ error: 'Error al crear proyecto' })
+  } catch (err) {
+    console.error('Error crear proyecto:', err.message)
+    res.status(500).json({ error: 'Error al crear proyecto: ' + err.message })
   }
 })
 
@@ -72,11 +75,19 @@ router.patch('/:id', async (req, res) => {
     const { name, description, status, startDate, endDate, color } = req.body
     const project = await prisma.project.update({
       where: { id: req.params.id },
-      data: { name, description, status, startDate, endDate, ...(color && { color }) }
+      data: {
+        ...(name !== undefined && { name }),
+        ...(description !== undefined && { description }),
+        ...(status !== undefined && { status }),
+        ...(color && { color }),
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null
+      }
     })
     res.json(project)
-  } catch {
-    res.status(500).json({ error: 'Error al actualizar proyecto' })
+  } catch (err) {
+    console.error('Error actualizar proyecto:', err.message)
+    res.status(500).json({ error: 'Error al actualizar proyecto: ' + err.message })
   }
 })
 
