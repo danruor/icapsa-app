@@ -6,6 +6,8 @@ import projectRoutes from './routes/projects.js'
 import taskRoutes from './routes/tasks.js'
 import fileRoutes from './routes/files.js'
 import dashboardRoutes from './routes/dashboard.js'
+import inventoryRoutes from './routes/inventory.js'
+import calendarRoutes from './routes/calendar.js'
 
 dotenv.config()
 
@@ -21,6 +23,8 @@ app.use('/api/projects',  projectRoutes)
 app.use('/api/tasks',     taskRoutes)
 app.use('/api/files',     fileRoutes)
 app.use('/api/dashboard', dashboardRoutes)
+app.use('/api/inventory', inventoryRoutes)
+app.use('/api/calendar',  calendarRoutes)
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 
