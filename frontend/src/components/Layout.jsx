@@ -73,7 +73,7 @@ export default function Layout() {
       {mobileOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
           <div className="fixed inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-          <aside className="relative w-64 bg-gray-900 flex flex-col">
+          <aside className="relative w-64 bg-gray-900 flex flex-col safe-top">
             <button onClick={() => setMobileOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white">
               <X size={20} />
             </button>
@@ -85,7 +85,7 @@ export default function Layout() {
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Mobile top bar */}
-        <header className="md:hidden flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-700">
+        <header className="md:hidden flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-700 safe-top">
           <button onClick={() => setMobileOpen(true)} className="text-white">
             <Menu size={22} />
           </button>
