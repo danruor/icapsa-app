@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Package, AlertTriangle, Boxes, DollarSign, Search, Trash2, Pencil } from 'lucide-react'
+import { Plus, Package, AlertTriangle, Boxes, DollarSign, Search, Trash2, Pencil, ArrowUp, ArrowDown, History } from 'lucide-react'
 import api from '../lib/api'
 
 export default function Inventory() {
@@ -47,6 +47,24 @@ export default function Inventory() {
       qc.invalidateQueries(['inventory-summary'])
     }
   })
+
+  const [moveModal, setMoveModal] = useState(null)
+  const [moveForm, setMoveForm] = useState({ type: 'IN', quantity: '', note: '' })
+
+  const movement = useMutation({
+    mutationFn: ({ id, ...data }) => api.post(`/inventory/${id}/movement`, data),
+    onSuccess: () => {
+      qc.invalidateQueries(['inventory'])
+      qc.invalidateQueries(['inventory-summary'])
+      setMoveModal(null)
+      setMoveForm({ type: 'IN', quantity: '', note: '' })
+    }
+  })
+
+  const openMove = (item, type) => {
+    setMoveModal(item)
+    setMoveForm({ type, quantity: '', note: '' })
+  }
 
   const openNew = () => {
     setEditing(null)
@@ -175,6 +193,12 @@ export default function Inventory() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 justify-end">
+                      <button onClick={() => openMove(item, 'IN')} title="Entrada" className="text-gray-400 hover:text-green-500">
+                        <ArrowUp size={15} />
+                      </button>
+                      <button onClick={() => openMove(item, 'OUT')} title="Salida" className="text-gray-400 hover:text-orange-500">
+                        <ArrowDown size={15} />
+                      </button>
                       <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-brand-500">
                         <Pencil size={15} />
                       </button>
@@ -258,6 +282,49 @@ export default function Inventory() {
               <button onClick={() => save.mutate(form)} disabled={!form.name || save.isPending}
                 className="flex-1 bg-brand-500 text-white text-sm py-2 rounded-lg hover:bg-brand-600 disabled:opacity-50">
                 {save.isPending ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear artículo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Movimiento de inventario */}
+      {moveModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <h2 className="text-lg font-semibold mb-1">
+              {moveForm.type === 'IN' ? 'Entrada de stock' : moveForm.type === 'OUT' ? 'Salida de stock' : 'Ajustar stock'}
+            </h2>
+            <p className="text-sm text-gray-500 mb-4">{moveModal.name} — actual: {moveModal.quantity} {moveModal.unit}</p>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                {[['IN', 'Entrada'], ['OUT', 'Salida'], ['ADJUST', 'Ajuste']].map(([val, lbl]) => (
+                  <button key={val} onClick={() => setMoveForm(f => ({ ...f, type: val }))}
+                    className={`flex-1 text-sm py-2 rounded-lg border ${moveForm.type === val ? 'border-brand-500 bg-brand-50 text-brand-600' : 'border-gray-200 text-gray-500'}`}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  {moveForm.type === 'ADJUST' ? 'Nueva cantidad total' : 'Cantidad'}
+                </label>
+                <input type="number" autoFocus value={moveForm.quantity}
+                  onChange={e => setMoveForm(f => ({ ...f, quantity: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Nota (opcional)</label>
+                <input value={moveForm.note} onChange={e => setMoveForm(f => ({ ...f, note: e.target.value }))}
+                  placeholder="Ej: Recepción de proveedor"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setMoveModal(null)} className="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg">Cancelar</button>
+              <button onClick={() => movement.mutate({ id: moveModal.id, ...moveForm })} disabled={!moveForm.quantity || movement.isPending}
+                className="flex-1 bg-brand-500 text-white text-sm py-2 rounded-lg disabled:opacity-50">
+                {movement.isPending ? 'Registrando...' : 'Registrar'}
               </button>
             </div>
           </div>
