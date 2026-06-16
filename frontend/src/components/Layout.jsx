@@ -1,11 +1,13 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, FolderKanban, LogOut, Building2 } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, Package, Calendar, LogOut, Building2 } from 'lucide-react'
 import { useAuthStore } from '../lib/authStore'
 import clsx from 'clsx'
 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/projects',  icon: FolderKanban,    label: 'Proyectos' }
+  { to: '/projects',  icon: FolderKanban,    label: 'Proyectos' },
+  { to: '/inventory', icon: Package,         label: 'Inventario' },
+  { to: '/calendar',  icon: Calendar,        label: 'Calendario' }
 ]
 
 export default function Layout() {
