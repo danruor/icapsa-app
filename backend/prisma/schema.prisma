@@ -24,6 +24,7 @@ model User {
   tasksAssigned Task[]          @relation("TaskAssignee")
   files         File[]
   comments      Comment[]
+  movements     InventoryMovement[]
 }
 
 enum Role {
@@ -151,4 +152,24 @@ model InventoryItem {
 
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  movements InventoryMovement[]
+}
+
+model InventoryMovement {
+  id        String   @id @default(cuid())
+  type      MovementType
+  quantity  Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  itemId String
+  userId String
+  item   InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id])
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUST
 }
