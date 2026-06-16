@@ -27,12 +27,13 @@ router.get('/', async (req, res) => {
 // POST /api/projects
 router.post('/', async (req, res) => {
   try {
-    const { name, description, startDate, endDate } = req.body
+    const { name, description, startDate, endDate, color } = req.body
     if (!name) return res.status(400).json({ error: 'El nombre es requerido' })
 
     const project = await prisma.project.create({
       data: {
         name, description, startDate, endDate,
+        ...(color && { color }),
         members: { create: { userId: req.user.id, role: 'ADMIN' } }
       },
       include: { members: true }
@@ -67,10 +68,10 @@ router.get('/:id', async (req, res) => {
 // PATCH /api/projects/:id
 router.patch('/:id', async (req, res) => {
   try {
-    const { name, description, status, startDate, endDate } = req.body
+    const { name, description, status, startDate, endDate, color } = req.body
     const project = await prisma.project.update({
       where: { id: req.params.id },
-      data: { name, description, status, startDate, endDate }
+      data: { name, description, status, startDate, endDate, ...(color && { color }) }
     })
     res.json(project)
   } catch {
