@@ -110,4 +110,53 @@ router.delete('/:id', async (req, res) => {
   }
 })
 
+
+// POST /api/inventory/:id/movement - registrar entrada/salida/ajuste
+router.post('/:id/movement', async (req, res) => {
+  try {
+    const { type, quantity, note } = req.body  // type: IN | OUT | ADJUST
+    const qty = parseInt(quantity)
+    if (!type || !qty) return res.status(400).json({ error: 'Tipo y cantidad requeridos' })
+
+    const item = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } })
+    if (!item) return res.status(404).json({ error: 'Artículo no encontrado' })
+
+    let newQty = item.quantity
+    if (type === 'IN') newQty += qty
+    else if (type === 'OUT') newQty = Math.max(0, newQty - qty)
+    else if (type === 'ADJUST') newQty = qty
+
+    await prisma.$transaction([
+      prisma.inventoryItem.update({ where: { id: req.params.id }, data: { quantity: newQty } }),
+      prisma.inventoryMovement.create({
+        data: { type, quantity: qty, note, itemId: req.params.id, userId: req.user.id }
+      })
+    ])
+
+    const updated = await prisma.inventoryItem.findUnique({
+      where: { id: req.params.id },
+      include: { project: { select: { id: true, name: true, color: true } } }
+    })
+    res.json(updated)
+  } catch (err) {
+    console.error('Error movimiento:', err.message)
+    res.status(500).json({ error: 'Error al registrar movimiento' })
+  }
+})
+
+// GET /api/inventory/:id/movements - historial de movimientos
+router.get('/:id/movements', async (req, res) => {
+  try {
+    const movements = await prisma.inventoryMovement.findMany({
+      where: { itemId: req.params.id },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    })
+    res.json(movements)
+  } catch {
+    res.status(500).json({ error: 'Error al obtener movimientos' })
+  }
+})
+
 export default router
