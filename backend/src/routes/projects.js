@@ -10,8 +10,9 @@ router.use(authenticate)
 // GET /api/projects
 router.get('/', async (req, res) => {
   try {
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)
     const projects = await prisma.project.findMany({
-      where: { members: { some: { userId: req.user.id } } },
+      where: isAdmin ? {} : { members: { some: { userId: req.user.id } } },
       include: {
         members: { include: { user: { select: { id: true, name: true, email: true } } } },
         _count: { select: { tasks: true } }
@@ -50,11 +51,11 @@ router.post('/', async (req, res) => {
 // GET /api/projects/:id
 router.get('/:id', async (req, res) => {
   try {
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)
     const project = await prisma.project.findFirst({
-      where: {
-        id: req.params.id,
-        members: { some: { userId: req.user.id } }
-      },
+      where: isAdmin
+        ? { id: req.params.id }
+        : { id: req.params.id, members: { some: { userId: req.user.id } } },
       include: {
         members: { include: { user: { select: { id: true, name: true, email: true, role: true } } } },
         tasks: { include: { assignee: { select: { id: true, name: true } }, creator: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } },
