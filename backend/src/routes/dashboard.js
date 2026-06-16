@@ -1,0 +1,65 @@
+import { Router } from 'express'
+import { PrismaClient } from '@prisma/client'
+import { authenticate } from '../middleware/auth.js'
+
+const router = Router()
+const prisma = new PrismaClient()
+
+router.use(authenticate)
+
+// GET /api/dashboard
+router.get('/', async (req, res) => {
+  try {
+    const userId = req.user.id
+
+    const [
+      totalProjects,
+      activeProjects,
+      totalTasks,
+      myTasks,
+      tasksByStatus,
+      recentTasks,
+      upcomingDeadlines
+    ] = await Promise.all([
+      prisma.project.count({ where: { members: { some: { userId } } } }),
+      prisma.project.count({ where: { members: { some: { userId } }, status: 'ACTIVE' } }),
+      prisma.task.count({ where: { project: { members: { some: { userId } } } } }),
+      prisma.task.count({ where: { assigneeId: userId, status: { not: 'DONE' } } }),
+      prisma.task.groupBy({
+        by: ['status'],
+        where: { project: { members: { some: { userId } } } },
+        _count: true
+      }),
+      prisma.task.findMany({
+        where: { project: { members: { some: { userId } } } },
+        include: {
+          project: { select: { id: true, name: true } },
+          assignee: { select: { id: true, name: true } }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5
+      }),
+      prisma.task.findMany({
+        where: {
+          project: { members: { some: { userId } } },
+          dueDate: { gte: new Date() },
+          status: { not: 'DONE' }
+        },
+        include: { project: { select: { id: true, name: true } } },
+        orderBy: { dueDate: 'asc' },
+        take: 5
+      })
+    ])
+
+    res.json({
+      stats: { totalProjects, activeProjects, totalTasks, myTasks },
+      tasksByStatus,
+      recentTasks,
+      upcomingDeadlines
+    })
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener dashboard' })
+  }
+})
+
+export default router
