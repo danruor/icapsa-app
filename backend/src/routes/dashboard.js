@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticate } from '../middleware/auth.js'
+import { notify } from '../lib/events.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -50,6 +51,30 @@ router.get('/', async (req, res) => {
         take: 5
       })
     ])
+
+    // Verificar tareas que vencen en 24h y notificar (una vez)
+    const soon = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    const dueTasks = await prisma.task.findMany({
+      where: {
+        assigneeId: userId,
+        status: { not: 'DONE' },
+        dueDate: { gte: new Date(), lte: soon }
+      },
+      include: { project: { select: { name: true, id: true } } }
+    })
+    for (const t of dueTasks) {
+      const existing = await prisma.notification.findFirst({
+        where: { userId, type: 'task_due', message: { contains: t.title } }
+      })
+      if (!existing) {
+        await notify({
+          userId, type: 'task_due',
+          title: 'Tarea por vencer',
+          message: `"${t.title}" vence pronto en ${t.project.name}`,
+          link: `/projects/${t.project.id}`
+        })
+      }
+    }
 
     res.json({
       stats: { totalProjects, activeProjects, totalTasks, myTasks },
