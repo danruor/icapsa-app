@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticate } from '../middleware/auth.js'
+import { logActivity } from '../lib/events.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -68,6 +69,13 @@ router.post('/', async (req, res) => {
       },
       include: { project: { select: { id: true, name: true, color: true } } }
     })
+    if (item.projectId) {
+      await logActivity({
+        userId: req.user.id, projectId: item.projectId,
+        action: 'added_inventory',
+        detail: `agregó "${item.name}" al inventario`
+      })
+    }
     res.status(201).json(item)
   } catch {
     res.status(500).json({ error: 'Error al crear artículo' })
@@ -137,6 +145,16 @@ router.post('/:id/movement', async (req, res) => {
       where: { id: req.params.id },
       include: { project: { select: { id: true, name: true, color: true } } }
     })
+
+    if (updated.projectId) {
+      const typeNames = { IN: 'entrada', OUT: 'salida', ADJUST: 'ajuste' }
+      await logActivity({
+        userId: req.user.id, projectId: updated.projectId,
+        action: 'inventory_movement',
+        detail: `registró ${typeNames[type]} de ${qty} ${updated.unit} en "${updated.name}"`
+      })
+    }
+
     res.json(updated)
   } catch (err) {
     console.error('Error movimiento:', err.message)
