@@ -232,4 +232,134 @@ router.get('/quote/:id.pdf', async (req, res) => {
   }
 })
 
+
+// GET /api/export/quotes.xlsx - lista de todas las cotizaciones con estado de pago
+router.get('/quotes.xlsx', async (req, res) => {
+  try {
+    if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: 'Sin permisos' })
+
+    const quotes = await prisma.quote.findMany({
+      include: { items: true, createdBy: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' }
+    })
+
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'ICAPSA'
+    const ws = wb.addWorksheet('Cotizaciones')
+
+    ws.columns = [
+      { header: 'Folio', key: 'folio', width: 16 },
+      { header: 'Cliente', key: 'client', width: 28 },
+      { header: 'Estado', key: 'status', width: 14 },
+      { header: 'Pago', key: 'payment', width: 14 },
+      { header: 'Subtotal', key: 'subtotal', width: 14 },
+      { header: 'IVA', key: 'tax', width: 12 },
+      { header: 'Total', key: 'total', width: 14 },
+      { header: 'Pagado', key: 'paid', width: 14 },
+      { header: 'Saldo', key: 'balance', width: 14 },
+      { header: 'Fecha', key: 'date', width: 14 },
+      { header: 'Creó', key: 'creator', width: 18 }
+    ]
+    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D9E75' } }
+    ws.getRow(1).height = 22
+
+    const statusMap = { DRAFT: 'Borrador', SENT: 'Enviada', APPROVED: 'Aprobada', REJECTED: 'Rechazada', EXPIRED: 'Vencida' }
+    const payMap = { PENDING: 'Pendiente', PARTIAL: 'Parcial', PAID: 'Pagada' }
+
+    quotes.forEach(q => {
+      const subtotal = q.items.reduce((s, i) => s + (i.unitPrice * i.quantity - i.discount), 0)
+      const tax = subtotal * (q.taxRate / 100)
+      const total = subtotal + tax
+      ws.addRow({
+        folio: q.folio, client: q.clientName,
+        status: statusMap[q.status], payment: payMap[q.paymentStatus],
+        subtotal, tax, total, paid: q.paidAmount,
+        balance: Math.max(0, total - q.paidAmount),
+        date: new Date(q.createdAt).toLocaleDateString('es-MX'),
+        creator: q.createdBy.name
+      })
+    })
+
+    ;['subtotal', 'tax', 'total', 'paid', 'balance'].forEach(col => {
+      ws.getColumn(col).numFmt = '"$"#,##0.00'
+    })
+
+    // Fila de totales
+    const lastRow = ws.rowCount + 1
+    ws.getCell(`D${lastRow}`).value = 'TOTALES'
+    ws.getCell(`D${lastRow}`).font = { bold: true }
+    ws.getCell(`G${lastRow}`).value = { formula: `SUM(G2:G${ws.rowCount})` }
+    ws.getCell(`H${lastRow}`).value = { formula: `SUM(H2:H${ws.rowCount})` }
+    ws.getCell(`I${lastRow}`).value = { formula: `SUM(I2:I${ws.rowCount})` }
+    ws.getRow(lastRow).font = { bold: true }
+    ;['G', 'H', 'I'].forEach(c => ws.getCell(`${c}${lastRow}`).numFmt = '"$"#,##0.00')
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', 'attachment; filename="cotizaciones-icapsa.xlsx"')
+    await wb.xlsx.write(res)
+    res.end()
+  } catch (err) {
+    console.error('Error export cotizaciones xlsx:', err.message)
+    res.status(500).json({ error: 'Error al exportar' })
+  }
+})
+
+// GET /api/export/quote/:id.xlsx - una cotización individual en Excel
+router.get('/quote/:id.xlsx', async (req, res) => {
+  try {
+    if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: 'Sin permisos' })
+
+    const quote = await prisma.quote.findUnique({
+      where: { id: req.params.id },
+      include: { items: true }
+    })
+    if (!quote) return res.status(404).json({ error: 'No encontrada' })
+
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet(quote.folio)
+
+    // Encabezado de la cotización
+    ws.mergeCells('A1:E1')
+    ws.getCell('A1').value = `ICAPSA - Cotización ${quote.folio}`
+    ws.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FF0F6E56' } }
+    ws.getCell('A3').value = 'Cliente:'
+    ws.getCell('B3').value = quote.clientName
+    ws.getCell('A4').value = 'Fecha:'
+    ws.getCell('B4').value = new Date(quote.createdAt).toLocaleDateString('es-MX')
+
+    // Tabla de conceptos
+    const headerRow = 6
+    ws.getRow(headerRow).values = ['Concepto', 'Cantidad', 'Unidad', 'P. Unitario', 'Importe']
+    ws.getRow(headerRow).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    ws.getRow(headerRow).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D9E75' } }
+    ws.columns = [{ width: 35 }, { width: 12 }, { width: 10 }, { width: 14 }, { width: 14 }]
+
+    let row = headerRow + 1
+    quote.items.forEach(it => {
+      const importe = it.unitPrice * it.quantity - it.discount
+      ws.getRow(row).values = [it.name, it.quantity, it.unit, it.unitPrice, importe]
+      ws.getCell(`D${row}`).numFmt = '"$"#,##0.00'
+      ws.getCell(`E${row}`).numFmt = '"$"#,##0.00'
+      row++
+    })
+
+    const subtotal = quote.items.reduce((s, i) => s + (i.unitPrice * i.quantity - i.discount), 0)
+    const tax = subtotal * (quote.taxRate / 100)
+    row++
+    ws.getCell(`D${row}`).value = 'Subtotal'; ws.getCell(`E${row}`).value = subtotal; ws.getCell(`E${row}`).numFmt = '"$"#,##0.00'; row++
+    ws.getCell(`D${row}`).value = `IVA ${quote.taxRate}%`; ws.getCell(`E${row}`).value = tax; ws.getCell(`E${row}`).numFmt = '"$"#,##0.00'; row++
+    ws.getCell(`D${row}`).value = 'TOTAL'; ws.getCell(`D${row}`).font = { bold: true }
+    ws.getCell(`E${row}`).value = subtotal + tax; ws.getCell(`E${row}`).numFmt = '"$"#,##0.00'; ws.getCell(`E${row}`).font = { bold: true }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${quote.folio}.xlsx"`)
+    await wb.xlsx.write(res)
+    res.end()
+  } catch (err) {
+    console.error('Error export cotización xlsx:', err.message)
+    res.status(500).json({ error: 'Error al exportar' })
+  }
+})
+
 export default router
