@@ -70,7 +70,7 @@ export default function Calendar() {
   const goToday = () => setCurrent(new Date())
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Calendario</h1>
@@ -84,9 +84,9 @@ export default function Calendar() {
         </div>
       </div>
 
-      <div className="flex gap-6">
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* Sidebar de filtros por proyecto */}
-        <div className="w-52 flex-shrink-0">
+        <div className="w-full lg:w-52 flex-shrink-0">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Proyectos</h3>
             <div className="space-y-2">
