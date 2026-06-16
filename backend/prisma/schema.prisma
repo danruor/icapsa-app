@@ -25,6 +25,8 @@ model User {
   files         File[]
   comments      Comment[]
   movements     InventoryMovement[]
+  notifications Notification[]
+  activities    Activity[]
 }
 
 enum Role {
@@ -45,10 +47,11 @@ model Project {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  members   ProjectMember[]
-  tasks     Task[]
-  files     File[]
-  inventory InventoryItem[]
+  members    ProjectMember[]
+  tasks      Task[]
+  files      File[]
+  inventory  InventoryItem[]
+  activities Activity[]
 }
 
 enum ProjectStatus {
@@ -172,4 +175,33 @@ enum MovementType {
   IN
   OUT
   ADJUST
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String   // task_assigned, task_due, comment, project_added, etc.
+  title     String
+  message   String
+  link      String?  // ruta interna ej: /projects/xxx
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  action    String   // created_task, updated_status, added_inventory, etc.
+  detail    String   // descripción legible
+  createdAt DateTime @default(now())
+
+  userId    String
+  projectId String?
+  user      User     @relation(fields: [userId], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
