@@ -291,7 +291,12 @@ function QuotesView() {
                 <td className="px-4 py-3 font-medium text-gray-900">{q.folio}</td>
                 <td className="px-4 py-3">
                   <div className="text-gray-900">{q.clientName}</div>
-                  {q.clientEmail && <div className="text-xs text-gray-400">{q.clientEmail}</div>}
+                  {q.project ? (
+                    <div className="text-xs text-brand-500 flex items-center gap-1 mt-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: q.project.color || '#2196F3' }} />
+                      {q.project.name}
+                    </div>
+                  ) : q.clientEmail && <div className="text-xs text-gray-400">{q.clientEmail}</div>}
                 </td>
                 <td className="px-4 py-3">
                   <select value={q.status} onChange={e => updateStatus.mutate({ id: q.id, status: e.target.value })}
@@ -384,13 +389,18 @@ function PaymentModal({ quote, onClose, onSave, saving }) {
 // ===== CONSTRUCTOR DE COTIZACIÓN =====
 function QuoteBuilder({ existing, onClose }) {
   const qc = useQueryClient()
-  const [client, setClient] = useState({ clientName: '', clientEmail: '', clientPhone: '', notes: '', taxRate: 16, validUntil: '' })
+  const [client, setClient] = useState({ clientName: '', clientEmail: '', clientPhone: '', notes: '', taxRate: 16, validUntil: '', projectId: '' })
   const [items, setItems] = useState([])
   const [productSearch, setProductSearch] = useState('')
 
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: () => api.get('/quotes/products').then(r => r.data)
+  })
+
+  const { data: projectsList = [] } = useQuery({
+    queryKey: ['quotes-projects'],
+    queryFn: () => api.get('/quotes/list/projects').then(r => r.data)
   })
 
   // Cargar cotización existente
@@ -405,7 +415,8 @@ function QuoteBuilder({ existing, onClose }) {
     setClient({
       clientName: existingData.clientName, clientEmail: existingData.clientEmail || '',
       clientPhone: existingData.clientPhone || '', notes: existingData.notes || '',
-      taxRate: existingData.taxRate, validUntil: existingData.validUntil ? existingData.validUntil.split('T')[0] : ''
+      taxRate: existingData.taxRate, validUntil: existingData.validUntil ? existingData.validUntil.split('T')[0] : '',
+      projectId: existingData.projectId || ''
     })
     setItems(existingData.items.map(i => ({ name: i.name, unit: i.unit, quantity: i.quantity, unitPrice: i.unitPrice, discount: i.discount, productId: i.productId })))
   }
@@ -455,6 +466,14 @@ function QuoteBuilder({ existing, onClose }) {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
               <input value={client.clientPhone} onChange={e => setClient(c => ({ ...c, clientPhone: e.target.value }))} placeholder="Teléfono"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Vincular a proyecto (opcional)</label>
+                <select value={client.projectId} onChange={e => setClient(c => ({ ...c, projectId: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+                  <option value="">Sin proyecto</option>
+                  {projectsList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">IVA %</label>
