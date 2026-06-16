@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, LogOut, Building2, Menu, X } from 'lucide-react'
 import { useAuthStore } from '../lib/authStore'
+import NotificationBell from './NotificationBell'
 import clsx from 'clsx'
 
 const nav = [
@@ -27,9 +28,12 @@ export default function Layout() {
 
   const SidebarContent = () => (
     <>
-      <div className="px-6 py-5 flex items-center gap-2 border-b border-gray-700">
-        <Building2 size={20} className="text-brand-500" />
-        <span className="text-white font-semibold tracking-wide">ICAPSA</span>
+      <div className="px-6 py-5 flex items-center justify-between border-b border-gray-700">
+        <div className="flex items-center gap-2">
+          <Building2 size={20} className="text-brand-500" />
+          <span className="text-white font-semibold tracking-wide">ICAPSA</span>
+        </div>
+        <NotificationBell />
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
@@ -89,10 +93,11 @@ export default function Layout() {
           <button onClick={() => setMobileOpen(true)} className="text-white">
             <Menu size={22} />
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1">
             <Building2 size={18} className="text-brand-500" />
             <span className="text-white font-semibold text-sm">ICAPSA</span>
           </div>
+          <NotificationBell />
         </header>
 
         <main className="flex-1 overflow-auto">
