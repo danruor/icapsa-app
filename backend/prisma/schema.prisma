@@ -230,6 +230,9 @@ model Quote {
   clientEmail String?
   clientPhone String?
   status      QuoteStatus @default(DRAFT)
+  paymentStatus PaymentStatus @default(PENDING)
+  paidAmount  Float       @default(0)
+  paidAt      DateTime?
   notes       String?
   taxRate     Float       @default(16)
   validUntil  DateTime?
@@ -247,6 +250,12 @@ enum QuoteStatus {
   APPROVED
   REJECTED
   EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
 }
 
 model QuoteItem {
