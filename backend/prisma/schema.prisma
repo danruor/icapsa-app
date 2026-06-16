@@ -45,6 +45,11 @@ model Project {
   color       String        @default("#2196F3")
   startDate   DateTime?
   endDate     DateTime?
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  budget      Float?
+  client      String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -53,6 +58,7 @@ model Project {
   files      File[]
   inventory  InventoryItem[]
   activities Activity[]
+  quotes     Quote[]
 }
 
 enum ProjectStatus {
@@ -242,6 +248,9 @@ model Quote {
   createdById String
   createdBy   User        @relation(fields: [createdById], references: [id])
   items       QuoteItem[]
+
+  projectId   String?
+  project     Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
 }
 
 enum QuoteStatus {
