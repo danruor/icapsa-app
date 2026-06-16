@@ -27,6 +27,7 @@ model User {
   movements     InventoryMovement[]
   notifications Notification[]
   activities    Activity[]
+  quotes        Quote[]
 }
 
 enum Role {
@@ -204,4 +205,62 @@ model Activity {
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  sku         String?
+  category    String?
+  unit        String   @default("pza")
+  price       Float    @default(0)
+  cost        Float?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  quoteItems QuoteItem[]
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  folio       String      @unique
+  clientName  String
+  clientEmail String?
+  clientPhone String?
+  status      QuoteStatus @default(DRAFT)
+  notes       String?
+  taxRate     Float       @default(16)
+  validUntil  DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  createdById String
+  createdBy   User        @relation(fields: [createdById], references: [id])
+  items       QuoteItem[]
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model QuoteItem {
+  id        String  @id @default(cuid())
+  quantity  Int     @default(1)
+  unitPrice Float
+  discount  Float   @default(0)
+
+  quoteId   String
+  productId String?
+  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id])
+
+  // snapshot del producto al momento de cotizar
+  name      String
+  unit      String  @default("pza")
 }
