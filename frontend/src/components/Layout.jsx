@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, LogOut, Building2, Menu, X } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Building2, Menu, X } from 'lucide-react'
 import { useAuthStore } from '../lib/authStore'
 import NotificationBell from './NotificationBell'
 import clsx from 'clsx'
@@ -16,6 +16,10 @@ const adminNav = [
   { to: '/settings', icon: Settings, label: 'Administración' }
 ]
 
+const superAdminNav = [
+  { to: '/quotes', icon: FileText, label: 'Cotizaciones' }
+]
+
 export default function Layout() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
@@ -24,16 +28,16 @@ export default function Layout() {
   const handleLogout = () => { logout(); navigate('/login') }
   const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user?.role)
 
-  const navItems = isAdmin ? [...nav, ...adminNav] : nav
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN'
+  let navItems = [...nav]
+  if (isSuperAdmin) navItems = [...navItems, ...superAdminNav]
+  if (isAdmin) navItems = [...navItems, ...adminNav]
 
   const SidebarContent = () => (
     <>
-      <div className="px-6 py-5 flex items-center justify-between border-b border-gray-700">
-        <div className="flex items-center gap-2">
-          <Building2 size={20} className="text-brand-500" />
-          <span className="text-white font-semibold tracking-wide">ICAPSA</span>
-        </div>
-        <NotificationBell />
+      <div className="px-6 py-5 flex items-center gap-2 border-b border-gray-700">
+        <Building2 size={20} className="text-brand-500" />
+        <span className="text-white font-semibold tracking-wide">ICAPSA</span>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
@@ -97,7 +101,14 @@ export default function Layout() {
             <Building2 size={18} className="text-brand-500" />
             <span className="text-white font-semibold text-sm">ICAPSA</span>
           </div>
-          <NotificationBell />
+          <NotificationBell dark />
+        </header>
+
+        {/* Desktop top bar with notifications */}
+        <header className="hidden md:flex items-center justify-end px-8 py-3 bg-white border-b border-gray-200">
+          <div className="text-gray-600">
+            <NotificationBell />
+          </div>
         </header>
 
         <main className="flex-1 overflow-auto">
