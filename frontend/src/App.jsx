@@ -6,11 +6,18 @@ import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import Inventory from './pages/Inventory'
 import Calendar from './pages/Calendar'
+import Settings from './pages/Settings'
 import Layout from './components/Layout'
 
 const PrivateRoute = ({ children }) => {
   const token = useAuthStore((s) => s.token)
   return token ? children : <Navigate to="/login" replace />
+}
+
+const AdminRoute = ({ children }) => {
+  const user = useAuthStore((s) => s.user)
+  const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user?.role)
+  return isAdmin ? children : <Navigate to="/dashboard" replace />
 }
 
 export default function App() {
@@ -25,6 +32,7 @@ export default function App() {
           <Route path="projects/:id" element={<ProjectDetail />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="calendar" element={<Calendar />} />
+          <Route path="settings" element={<AdminRoute><Settings /></AdminRoute>} />
         </Route>
       </Routes>
     </BrowserRouter>
