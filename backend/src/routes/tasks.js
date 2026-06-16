@@ -39,7 +39,15 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Título y proyecto son requeridos' })
 
     const task = await prisma.task.create({
-      data: { title, description, projectId, assigneeId, priority, dueDate, creatorId: req.user.id },
+      data: {
+        title,
+        description: description || null,
+        projectId,
+        assigneeId: assigneeId || null,
+        priority: priority || 'MEDIUM',
+        dueDate: dueDate ? new Date(dueDate) : null,
+        creatorId: req.user.id
+      },
       include: {
         assignee: { select: { id: true, name: true } },
         creator:  { select: { id: true, name: true } },
@@ -64,8 +72,9 @@ router.post('/', async (req, res) => {
     })
 
     res.status(201).json(task)
-  } catch {
-    res.status(500).json({ error: 'Error al crear tarea' })
+  } catch (err) {
+    console.error('Error al crear tarea:', err.message)
+    res.status(500).json({ error: 'Error al crear tarea: ' + err.message })
   }
 })
 
@@ -77,7 +86,14 @@ router.patch('/:id', async (req, res) => {
 
     const task = await prisma.task.update({
       where: { id: req.params.id },
-      data: { title, description, status, priority, assigneeId, dueDate },
+      data: {
+        ...(title !== undefined && { title }),
+        ...(description !== undefined && { description: description || null }),
+        ...(status !== undefined && { status }),
+        ...(priority !== undefined && { priority }),
+        ...(assigneeId !== undefined && { assigneeId: assigneeId || null }),
+        ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null })
+      },
       include: {
         assignee: { select: { id: true, name: true } },
         creator:  { select: { id: true, name: true } },
@@ -106,8 +122,9 @@ router.patch('/:id', async (req, res) => {
     }
 
     res.json(task)
-  } catch {
-    res.status(500).json({ error: 'Error al actualizar tarea' })
+  } catch (err) {
+    console.error('Error al actualizar tarea:', err.message)
+    res.status(500).json({ error: 'Error al actualizar tarea: ' + err.message })
   }
 })
 
