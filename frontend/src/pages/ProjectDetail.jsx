@@ -84,12 +84,14 @@ export default function ProjectDetail() {
 
   const createTask = useMutation({
     mutationFn: (data) => api.post('/tasks', { ...data, projectId: id }),
-    onSuccess: () => { qc.invalidateQueries(['project', id]); setShowTaskForm(false); setTaskForm({ title: '', description: '', priority: 'MEDIUM', dueDate: '', assigneeId: '' }) }
+    onSuccess: () => { qc.invalidateQueries(['project', id]); setShowTaskForm(false); setTaskForm({ title: '', description: '', priority: 'MEDIUM', dueDate: '', assigneeId: '' }) },
+    onError: (e) => alert(e.response?.data?.error || 'No se pudo crear la tarea. Intenta de nuevo.')
   })
 
   const updateTask = useMutation({
     mutationFn: ({ taskId, ...data }) => api.patch(`/tasks/${taskId}`, data),
-    onSuccess: () => qc.invalidateQueries(['project', id])
+    onSuccess: () => qc.invalidateQueries(['project', id]),
+    onError: (e) => alert(e.response?.data?.error || 'No se pudo actualizar la tarea.')
   })
 
   const updateProject = useMutation({
