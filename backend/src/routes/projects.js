@@ -102,4 +102,45 @@ router.delete('/:id', async (req, res) => {
   }
 })
 
+
+// GET /api/projects/:id/members - miembros del proyecto
+router.get('/:id/members', async (req, res) => {
+  try {
+    const members = await prisma.projectMember.findMany({
+      where: { projectId: req.params.id },
+      include: { user: { select: { id: true, name: true, email: true, role: true, position: true } } }
+    })
+    res.json(members)
+  } catch {
+    res.status(500).json({ error: 'Error al obtener miembros' })
+  }
+})
+
+// POST /api/projects/:id/members - agregar miembro
+router.post('/:id/members', async (req, res) => {
+  try {
+    const { userId, role } = req.body
+    const member = await prisma.projectMember.create({
+      data: { projectId: req.params.id, userId, role: role || 'MEMBER' },
+      include: { user: { select: { id: true, name: true, email: true } } }
+    })
+    res.status(201).json(member)
+  } catch (err) {
+    if (err.code === 'P2002') return res.status(409).json({ error: 'El usuario ya es miembro' })
+    res.status(500).json({ error: 'Error al agregar miembro' })
+  }
+})
+
+// DELETE /api/projects/:id/members/:userId - quitar miembro
+router.delete('/:id/members/:userId', async (req, res) => {
+  try {
+    await prisma.projectMember.deleteMany({
+      where: { projectId: req.params.id, userId: req.params.userId }
+    })
+    res.json({ message: 'Miembro removido' })
+  } catch {
+    res.status(500).json({ error: 'Error al remover miembro' })
+  }
+})
+
 export default router
