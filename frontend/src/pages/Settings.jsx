@@ -26,7 +26,7 @@ export default function Settings() {
 
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [] })
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar'] })
   const [projectModal, setProjectModal] = useState(null) // user being edited for projects
 
   const { data: users = [], isLoading } = useQuery({
@@ -72,7 +72,7 @@ export default function Settings() {
 
   const openNew = () => {
     setEditing(null)
-    setForm({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [] })
+    setForm({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar'] })
     setShowForm(true)
   }
 
@@ -80,6 +80,7 @@ export default function Settings() {
     setEditing(user.id)
     setForm({
       name: user.name, email: user.email, password: '', role: user.role,
+      visibleTabs: (user.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean),
       phone: user.phone || '', position: user.position || '',
       projectIds: user.projects?.map(p => p.project.id) || []
     })
@@ -270,6 +271,42 @@ export default function Settings() {
                   {availableRoles.map(r => <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>)}
                 </select>
               </div>
+
+              {/* Pestañas visibles: solo aplica a roles no-admin (admins ven todo) */}
+              {!['SUPER_ADMIN', 'ADMIN'].includes(form.role) && (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-2">Pestañas visibles para este usuario</label>
+                  <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+                    <label className="flex items-center gap-2 text-sm text-gray-400">
+                      <input type="checkbox" checked disabled />
+                      <span>Dashboard <span className="text-xs">(siempre visible)</span></span>
+                    </label>
+                    {[
+                      { key: 'projects', label: 'Proyectos' },
+                      { key: 'inventory', label: 'Inventario' },
+                      { key: 'calendar', label: 'Calendario' }
+                    ].map(tab => (
+                      <label key={tab.key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:text-gray-900">
+                        <input type="checkbox"
+                          checked={form.visibleTabs.includes(tab.key)}
+                          onChange={e => setForm(f => ({
+                            ...f,
+                            visibleTabs: e.target.checked
+                              ? [...f.visibleTabs, tab.key]
+                              : f.visibleTabs.filter(t => t !== tab.key)
+                          }))} />
+                        {tab.label}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Cotizaciones solo es visible para super administradores.</p>
+                </div>
+              )}
+              {['SUPER_ADMIN', 'ADMIN'].includes(form.role) && (
+                <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
+                  Los administradores tienen acceso a todas las pestañas automáticamente.
+                </div>
+              )}
               {!editing && (
                 <div>
                   <label className="block text-xs text-gray-500 mb-2">Proyectos con acceso</label>
