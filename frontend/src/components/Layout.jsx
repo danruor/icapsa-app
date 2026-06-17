@@ -1,15 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Building2, Menu, X } from 'lucide-react'
 import { useAuthStore } from '../lib/authStore'
+import api from '../lib/api'
 import NotificationBell from './NotificationBell'
 import clsx from 'clsx'
 
 const nav = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/projects',  icon: FolderKanban,    label: 'Proyectos' },
-  { to: '/inventory', icon: Package,         label: 'Inventario' },
-  { to: '/calendar',  icon: Calendar,        label: 'Calendario' }
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', key: 'dashboard' },
+  { to: '/projects',  icon: FolderKanban,    label: 'Proyectos',  key: 'projects' },
+  { to: '/inventory', icon: Package,         label: 'Inventario', key: 'inventory' },
+  { to: '/calendar',  icon: Calendar,        label: 'Calendario', key: 'calendar' }
 ]
 
 const adminNav = [
@@ -17,19 +18,37 @@ const adminNav = [
 ]
 
 const superAdminNav = [
-  { to: '/quotes', icon: FileText, label: 'Cotizaciones' }
+  { to: '/quotes', icon: FileText, label: 'Cotizaciones', key: 'quotes' }
 ]
 
 export default function Layout() {
-  const { user, logout } = useAuthStore()
+  const { user, logout, updateUser } = useAuthStore()
   const navigate = useNavigate()
+
+  // Refrescar datos del usuario (incluye pestañas permitidas) al cargar
+  useEffect(() => {
+    api.get('/auth/me')
+      .then(r => updateUser(r.data))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const handleLogout = () => { logout(); navigate('/login') }
   const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user?.role)
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
-  let navItems = [...nav]
+
+  // Pestañas permitidas: admins ven todo; los demás solo Dashboard + lo que el super admin marcó
+  let baseNav
+  if (isAdmin) {
+    baseNav = [...nav]
+  } else {
+    const allowed = (user?.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean)
+    baseNav = nav.filter(item => item.key === 'dashboard' || allowed.includes(item.key))
+  }
+
+  let navItems = [...baseNav]
   if (isSuperAdmin) navItems = [...navItems, ...superAdminNav]
   if (isAdmin) navItems = [...navItems, ...adminNav]
 
