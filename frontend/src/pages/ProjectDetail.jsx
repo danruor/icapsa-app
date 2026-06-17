@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Package, CheckSquare, Pencil, Trash2, AlertTriangle, Search, Activity, Download, FileText, Camera, Image as ImageIcon, MapPin, DollarSign, Users, UserPlus, X } from 'lucide-react'
+import { Plus, Package, CheckSquare, Pencil, Trash2, AlertTriangle, Search, Activity, Download, FileText, Camera, Image as ImageIcon, MapPin, DollarSign, Users, UserPlus, X, MessageSquare, Send } from 'lucide-react'
 import api, { downloadFile } from '../lib/api'
 import { useAuthStore } from '../lib/authStore'
 import { LocationMap, LocationPicker } from '../components/MapView'
@@ -14,6 +14,7 @@ const columns = [
 ]
 
 const priorityColor = { LOW: 'text-gray-400', MEDIUM: 'text-blue-500', HIGH: 'text-orange-500', URGENT: 'text-red-500' }
+const statusLabel = { TODO: 'Por hacer', IN_PROGRESS: 'En progreso', REVIEW: 'En revisión', DONE: 'Completado' }
 const COLORS = ['#2196F3', '#1D9E75', '#D85A30', '#D4537E', '#7F77DD', '#BA7517', '#888780']
 
 export default function ProjectDetail() {
@@ -112,6 +113,21 @@ export default function ProjectDetail() {
   })
 
   const [uploadingTask, setUploadingTask] = useState(null)
+  const [detailTask, setDetailTask] = useState(null)
+  const [commentText, setCommentText] = useState('')
+
+  // Comentarios de la tarea abierta
+  const { data: comments = [] } = useQuery({
+    queryKey: ['task-comments', detailTask?.id],
+    queryFn: () => api.get(`/tasks/${detailTask.id}/comments`).then(r => r.data),
+    enabled: !!detailTask
+  })
+
+  const addComment = useMutation({
+    mutationFn: ({ taskId, content }) => api.post(`/tasks/${taskId}/comments`, { content }),
+    onSuccess: () => { qc.invalidateQueries(['task-comments', detailTask?.id]); qc.invalidateQueries(['project', id]); setCommentText('') },
+    onError: (e) => alert(e.response?.data?.error || 'Error al comentar')
+  })
 
   const uploadPhoto = async (taskId, file) => {
     setUploadingTask(taskId)
@@ -253,7 +269,7 @@ export default function ProjectDetail() {
                 <div className="space-y-2">
                   {tasksByStatus[col.key].map(task => (
                     <div key={task.id} className="bg-white rounded-lg p-3 border border-gray-100 shadow-sm">
-                      <p className="text-sm text-gray-900 font-medium mb-1">{task.title}</p>
+                      <button onClick={() => setDetailTask(task)} className="text-sm text-gray-900 font-medium mb-1 text-left hover:text-brand-600 transition-colors w-full">{task.title}</button>
                       {task.description && <p className="text-xs text-gray-400 mb-2 line-clamp-2">{task.description}</p>}
                       <div className="flex items-center justify-between mt-2">
                         <span className={`text-xs font-medium ${priorityColor[task.priority]}`}>{task.priority}</span>
@@ -289,6 +305,9 @@ export default function ProjectDetail() {
                             <ImageIcon size={12} /> {task._count.files}
                           </span>
                         )}
+                        <button onClick={() => setDetailTask(task)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-brand-500">
+                          <MessageSquare size={12} /> {task._count?.comments || 0}
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -547,6 +566,89 @@ export default function ProjectDetail() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Detalle de tarea con comentarios */}
+      {detailTask && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-start justify-between p-5 border-b border-gray-100">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg font-semibold text-gray-900">{detailTask.title}</h2>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className={`text-xs font-medium ${priorityColor[detailTask.priority]}`}>{detailTask.priority}</span>
+                  <span className="text-xs text-gray-400">·</span>
+                  <span className="text-xs text-gray-500">{statusLabel[detailTask.status]}</span>
+                  {detailTask.dueDate && <><span className="text-xs text-gray-400">·</span><span className="text-xs text-orange-500">{new Date(detailTask.dueDate).toLocaleDateString('es-MX')}</span></>}
+                </div>
+              </div>
+              <button onClick={() => { setDetailTask(null); setCommentText('') }} className="text-gray-400 hover:text-gray-600 flex-shrink-0 ml-2">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Cuerpo scrollable */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {detailTask.description && (
+                <p className="text-sm text-gray-600 mb-4 whitespace-pre-wrap">{detailTask.description}</p>
+              )}
+              {detailTask.assignee && (
+                <div className="flex items-center gap-2 mb-4 pb-4 border-b border-gray-50">
+                  <span className="text-xs text-gray-400">Responsable:</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-6 h-6 rounded-full bg-brand-50 flex items-center justify-center text-[9px] font-medium text-brand-600">
+                      {detailTask.assignee.name.split(' ').map(n => n[0]).slice(0,2).join('')}
+                    </div>
+                    <span className="text-sm text-gray-700">{detailTask.assignee.name}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Comentarios */}
+              <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                <MessageSquare size={15} /> Comentarios ({comments.length})
+              </h3>
+              <div className="space-y-3">
+                {comments.length === 0 && <p className="text-sm text-gray-400">Sin comentarios aún. Sé el primero.</p>}
+                {comments.map(c => (
+                  <div key={c.id} className="flex items-start gap-2">
+                    <div className="w-7 h-7 rounded-full bg-brand-50 flex items-center justify-center text-[9px] font-medium text-brand-600 flex-shrink-0">
+                      {c.user.name.split(' ').map(n => n[0]).slice(0,2).join('')}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="bg-gray-50 rounded-lg px-3 py-2">
+                        <p className="text-sm text-gray-900">{c.content}</p>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1 ml-1">
+                        {c.user.name} · {new Date(c.createdAt).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Input de comentario */}
+            <div className="p-4 border-t border-gray-100">
+              <div className="flex gap-2">
+                <input
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && commentText.trim()) addComment.mutate({ taskId: detailTask.id, content: commentText }) }}
+                  placeholder="Escribe un comentario..."
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+                />
+                <button
+                  onClick={() => addComment.mutate({ taskId: detailTask.id, content: commentText })}
+                  disabled={!commentText.trim() || addComment.isPending}
+                  className="bg-brand-500 hover:bg-brand-600 text-white px-4 rounded-lg disabled:opacity-50 flex items-center justify-center">
+                  <Send size={16} />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
