@@ -7,6 +7,7 @@ export const useAuthStore = create(
       user: null,
       token: null,
       setAuth: (user, token) => set({ user, token }),
+      updateUser: (user) => set((s) => ({ user: { ...s.user, ...user } })),
       logout: () => set({ user: null, token: null })
     }),
     { name: 'icapsa-auth' }
