@@ -15,7 +15,7 @@ router.get('/users', async (req, res) => {
     const users = await prisma.user.findMany({
       select: {
         id: true, email: true, name: true, role: true, isActive: true,
-        phone: true, position: true, createdAt: true,
+        phone: true, position: true, visibleTabs: true, createdAt: true,
         projects: {
           include: { project: { select: { id: true, name: true, color: true } } }
         }
@@ -32,7 +32,7 @@ router.get('/users', async (req, res) => {
 // POST /api/admin/users - crear usuario
 router.post('/users', async (req, res) => {
   try {
-    const { email, password, name, role, phone, position, projectIds } = req.body
+    const { email, password, name, role, phone, position, projectIds, visibleTabs } = req.body
     if (!email || !password || !name)
       return res.status(400).json({ error: 'Email, contraseña y nombre son requeridos' })
 
@@ -48,6 +48,7 @@ router.post('/users', async (req, res) => {
       data: {
         email, password: hashed, name,
         role: role || 'MEMBER', phone, position,
+        ...(Array.isArray(visibleTabs) && { visibleTabs: visibleTabs.join(',') }),
         ...(projectIds?.length && {
           projects: {
             create: projectIds.map(pid => ({ projectId: pid, role: role || 'MEMBER' }))
@@ -66,7 +67,7 @@ router.post('/users', async (req, res) => {
 // PATCH /api/admin/users/:id - editar usuario
 router.patch('/users/:id', async (req, res) => {
   try {
-    const { name, role, phone, position, isActive, password } = req.body
+    const { name, role, phone, position, isActive, password, visibleTabs } = req.body
     const target = await prisma.user.findUnique({ where: { id: req.params.id } })
     if (!target) return res.status(404).json({ error: 'Usuario no encontrado' })
 
@@ -84,14 +85,15 @@ router.patch('/users/:id', async (req, res) => {
       ...(role !== undefined && { role }),
       ...(phone !== undefined && { phone }),
       ...(position !== undefined && { position }),
-      ...(isActive !== undefined && { isActive })
+      ...(isActive !== undefined && { isActive }),
+      ...(Array.isArray(visibleTabs) && { visibleTabs: visibleTabs.join(',') })
     }
     if (password) data.password = await bcrypt.hash(password, 12)
 
     const user = await prisma.user.update({
       where: { id: req.params.id },
       data,
-      select: { id: true, email: true, name: true, role: true, isActive: true, phone: true, position: true }
+      select: { id: true, email: true, name: true, role: true, isActive: true, phone: true, position: true, visibleTabs: true }
     })
     res.json(user)
   } catch (err) {
