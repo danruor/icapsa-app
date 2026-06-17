@@ -138,16 +138,53 @@ router.delete('/:id', async (req, res) => {
   }
 })
 
-// POST /api/tasks/:id/comments
+// GET /api/tasks/:id/comments - leer comentarios de una tarea
+router.get('/:id/comments', async (req, res) => {
+  try {
+    const comments = await prisma.comment.findMany({
+      where: { taskId: req.params.id },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'asc' }
+    })
+    res.json(comments)
+  } catch (err) {
+    console.error('Error al leer comentarios:', err.message)
+    res.status(500).json({ error: 'Error al obtener comentarios' })
+  }
+})
+
+// POST /api/tasks/:id/comments - agregar comentario
 router.post('/:id/comments', async (req, res) => {
   try {
     const { content } = req.body
+    if (!content || !content.trim()) return res.status(400).json({ error: 'El comentario no puede estar vacío' })
+
     const comment = await prisma.comment.create({
-      data: { content, taskId: req.params.id, userId: req.user.id },
+      data: { content: content.trim(), taskId: req.params.id, userId: req.user.id },
       include: { user: { select: { id: true, name: true } } }
     })
+
+    // Notificar al responsable y creador de la tarea (si no son quien comenta)
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+      select: { title: true, projectId: true, assigneeId: true, creatorId: true }
+    })
+    if (task) {
+      const toNotify = new Set([task.assigneeId, task.creatorId].filter(uid => uid && uid !== req.user.id))
+      for (const uid of toNotify) {
+        await notify({
+          userId: uid,
+          type: 'comment',
+          title: 'Nuevo comentario',
+          message: `${comment.user.name} comentó en "${task.title}"`,
+          link: `/projects/${task.projectId}`
+        })
+      }
+    }
+
     res.status(201).json(comment)
-  } catch {
+  } catch (err) {
+    console.error('Error al agregar comentario:', err.message)
     res.status(500).json({ error: 'Error al agregar comentario' })
   }
 })
