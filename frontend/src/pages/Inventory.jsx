@@ -1,10 +1,15 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Package, AlertTriangle, Boxes, DollarSign, Search, Trash2, Pencil, ArrowUp, ArrowDown, History, Download } from 'lucide-react'
+import { Plus, Package, AlertTriangle, Boxes, DollarSign, Search, Trash2, Pencil, ArrowUp, ArrowDown, History, Download, PackageCheck, ShoppingCart, X } from 'lucide-react'
 import api, { downloadFile } from '../lib/api'
+import DeliveriesView from './DeliveriesView'
+import PurchaseOrdersView from './PurchaseOrdersView'
+import ItemKardexModal from './ItemKardexModal'
 
 export default function Inventory() {
   const qc = useQueryClient()
+  const [subTab, setSubTab] = useState('items')
+  const [kardexItem, setKardexItem] = useState(null)
   const [filterProject, setFilterProject] = useState('')
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -99,11 +104,32 @@ export default function Inventory() {
 
   return (
     <div className="p-4 md:p-8">
-      <div className="flex items-center justify-between mb-6 gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Inventario</h1>
-          <p className="text-sm text-gray-500 mt-1">{filtered.length} artículos</p>
-        </div>
+      <div className="mb-4">
+        <h1 className="text-xl font-semibold text-gray-900">Inventario</h1>
+        <p className="text-sm text-gray-500 mt-1">Control de stock y trazabilidad de material</p>
+      </div>
+
+      {/* Sub-pestañas */}
+      <div className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto scrollbar-thin">
+        <button onClick={() => setSubTab('items')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap flex-shrink-0 ${subTab === 'items' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          <Package size={15} /> Artículos
+        </button>
+        <button onClick={() => setSubTab('deliveries')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap flex-shrink-0 ${subTab === 'deliveries' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          <PackageCheck size={15} /> Entregas
+        </button>
+        <button onClick={() => setSubTab('purchases')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap flex-shrink-0 ${subTab === 'purchases' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          <ShoppingCart size={15} /> Órdenes de Compra
+        </button>
+      </div>
+
+      {subTab === 'deliveries' && <DeliveriesView inventory={items} projects={projects} />}
+      {subTab === 'purchases' && <PurchaseOrdersView inventory={items} projects={projects} />}
+
+      {subTab === 'items' && <>
+      <div className="flex items-center justify-end mb-6 gap-3">
         <div className="flex items-center gap-2">
           <button onClick={() => downloadFile(`/export/inventory.xlsx${filterProject ? '?projectId=' + filterProject : ''}`, 'inventario-icapsa.xlsx')}
             className="flex items-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-2 rounded-lg">
@@ -175,7 +201,10 @@ export default function Inventory() {
               return (
                 <tr key={item.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{item.name}</div>
+                    <button onClick={() => setKardexItem(item)} className="font-medium text-gray-900 hover:text-brand-600 text-left flex items-center gap-1.5">
+                      {item.name}
+                      <History size={12} className="text-gray-300" />
+                    </button>
                     {item.category && <div className="text-xs text-gray-400">{item.category}</div>}
                   </td>
                   <td className="px-4 py-3 text-gray-500">{item.sku || '—'}</td>
@@ -292,6 +321,12 @@ export default function Inventory() {
             </div>
           </div>
         </div>
+      )}
+      </>}
+
+      {/* MODAL: Kardex del artículo */}
+      {kardexItem && (
+        <ItemKardexModal item={kardexItem} onClose={() => setKardexItem(null)} />
       )}
 
       {/* MODAL: Movimiento de inventario */}
