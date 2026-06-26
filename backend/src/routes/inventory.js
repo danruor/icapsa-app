@@ -69,6 +69,17 @@ router.post('/', async (req, res) => {
       },
       include: { project: { select: { id: true, name: true, color: true } } }
     })
+
+    // Saldo inicial: si nace con stock, registrar movimiento de apertura para el kardex
+    if (item.quantity > 0) {
+      await prisma.inventoryMovement.create({
+        data: {
+          type: 'IN', quantity: item.quantity, unitPrice: item.unitPrice,
+          note: 'Saldo inicial', itemId: item.id, userId: req.user.id
+        }
+      })
+    }
+
     if (item.projectId) {
       await logActivity({
         userId: req.user.id, projectId: item.projectId,
@@ -77,7 +88,8 @@ router.post('/', async (req, res) => {
       })
     }
     res.status(201).json(item)
-  } catch {
+  } catch (err) {
+    console.error('Error crear artículo:', err.message)
     res.status(500).json({ error: 'Error al crear artículo' })
   }
 })
@@ -165,14 +177,35 @@ router.post('/:id/movement', async (req, res) => {
 // GET /api/inventory/:id/movements - historial de movimientos
 router.get('/:id/movements', async (req, res) => {
   try {
+    // Cronológico ascendente para calcular el saldo acumulado (kardex)
     const movements = await prisma.inventoryMovement.findMany({
       where: { itemId: req.params.id },
-      include: { user: { select: { id: true, name: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 50
+      include: {
+        user: { select: { id: true, name: true } },
+        purchaseOrder: { select: { id: true, folio: true, supplier: true } },
+        delivery: {
+          select: {
+            id: true, folio: true, recipient: true,
+            quote: { select: { id: true, folio: true } }
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
     })
-    res.json(movements)
-  } catch {
+
+    // Calcular saldo acumulado (IN suma, OUT resta, ADJUST fija)
+    let balance = 0
+    const withBalance = movements.map(m => {
+      if (m.type === 'IN') balance += m.quantity
+      else if (m.type === 'OUT') balance -= m.quantity
+      else if (m.type === 'ADJUST') balance = m.quantity
+      return { ...m, balanceAfter: balance }
+    })
+
+    // Devolver en orden descendente (más reciente primero) para mostrar
+    res.json(withBalance.reverse())
+  } catch (err) {
+    console.error('Error kardex:', err.message)
     res.status(500).json({ error: 'Error al obtener movimientos' })
   }
 })
