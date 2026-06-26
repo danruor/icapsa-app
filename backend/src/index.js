@@ -12,6 +12,8 @@ import adminRoutes from './routes/admin.js'
 import notificationRoutes from './routes/notifications.js'
 import exportRoutes from './routes/export.js'
 import quotesRoutes from './routes/quotes.js'
+import purchaseOrderRoutes from './routes/purchase-orders.js'
+import deliveryRoutes from './routes/deliveries.js'
 
 dotenv.config()
 
@@ -33,6 +35,8 @@ app.use('/api/admin',     adminRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/export',    exportRoutes)
 app.use('/api/quotes',    quotesRoutes)
+app.use('/api/purchase-orders', purchaseOrderRoutes)
+app.use('/api/deliveries', deliveryRoutes)
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 
