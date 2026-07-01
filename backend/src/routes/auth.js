@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { PrismaClient } from '@prisma/client'
 import { authenticate, requireAdmin } from '../middleware/auth.js'
+import { logActivity } from '../lib/events.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -60,6 +61,8 @@ router.post('/login', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     )
+
+    await logActivity({ userId: user.id, action: 'login', detail: 'inició sesión' })
 
     res.json({
       user: { id: user.id, email: user.email, name: user.name, role: user.role, visibleTabs: user.visibleTabs },
