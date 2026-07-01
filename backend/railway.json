@@ -2,7 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm install && npx prisma generate"
+    "buildCommand": "npm install helmet express-rate-limit && npm install && npx prisma generate"
   },
   "deploy": {
     "startCommand": "npx prisma db push --accept-data-loss && node src/index.js",
