@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
-import { authenticate } from '../middleware/auth.js'
+import { authenticate, requireTab } from '../middleware/auth.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -20,21 +20,33 @@ const storage = multer.diskStorage({
   }
 })
 
+// Solo imágenes y PDF: se valida la extensión Y el tipo MIME real (ambos deben coincidir)
+const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.pdf'])
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'])
+
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 }, // 10MB, un archivo por petición
   fileFilter: (_, file, cb) => {
-    const allowed = /jpeg|jpg|png|gif|pdf|doc|docx|xls|xlsx|csv|txt|zip/
-    const ext = allowed.test(path.extname(file.originalname).toLowerCase())
-    const mime = allowed.test(file.mimetype)
-    cb(null, ext || mime)
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (ALLOWED_EXT.has(ext) && ALLOWED_MIME.has(file.mimetype)) return cb(null, true)
+    cb(new Error('Tipo de archivo no permitido. Solo imágenes (JPG, PNG, GIF, WebP, HEIC) y PDF.'))
   }
 })
 
+// Convierte el error del filtro en respuesta legible en vez de crash
+const handleUpload = (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message.includes('File too large') ? 'El archivo excede 10MB' : err.message })
+    next()
+  })
+}
+
 router.use(authenticate)
+router.use(requireTab('projects'))
 
 // POST /api/files/upload
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', handleUpload, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Archivo requerido' })
 
