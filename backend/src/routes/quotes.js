@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticate } from '../middleware/auth.js'
 import { nextFolio } from '../lib/folio.js'
+import { logActivity } from '../lib/events.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -93,6 +94,7 @@ router.delete('/products/:id', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const quotes = await prisma.quote.findMany({
+      where: { deletedAt: null },
       include: {
         createdBy: { select: { id: true, name: true } },
         items: true,
@@ -116,8 +118,8 @@ router.get('/', async (req, res) => {
 // GET /api/quotes/:id
 router.get('/:id', async (req, res) => {
   try {
-    const quote = await prisma.quote.findUnique({
-      where: { id: req.params.id },
+    const quote = await prisma.quote.findFirst({
+      where: { id: req.params.id, deletedAt: null },
       include: {
         createdBy: { select: { id: true, name: true } },
         items: { include: { product: { select: { id: true, name: true } } } },
@@ -222,8 +224,15 @@ router.patch('/:id', async (req, res) => {
 // DELETE /api/quotes/:id
 router.delete('/:id', async (req, res) => {
   try {
-    await prisma.quote.delete({ where: { id: req.params.id } })
-    res.json({ message: 'Cotización eliminada' })
+    const quote = await prisma.quote.update({
+      where: { id: req.params.id },
+      data: { deletedAt: new Date() }
+    })
+    await logActivity({
+      userId: req.user.id, action: 'quote_trashed',
+      detail: `envió la cotización ${quote.folio} a la papelera`
+    })
+    res.json({ message: 'Cotización enviada a la papelera (recuperable por 30 días)' })
   } catch {
     res.status(500).json({ error: 'Error al eliminar cotización' })
   }
@@ -271,6 +280,11 @@ router.patch('/:id/payment', async (req, res) => {
     }
 
     const updated = await prisma.quote.update({ where: { id: req.params.id }, data })
+    const payNames = { PENDING: 'pendiente', PARTIAL: 'pago parcial', PAID: 'pagada' }
+    await logActivity({
+      userId: req.user.id, action: 'quote_payment',
+      detail: `actualizó el pago de ${updated.folio} a ${payNames[updated.paymentStatus]} ($${updated.paidAmount.toLocaleString('es-MX')})`
+    })
     res.json(updated)
   } catch (err) {
     console.error('Error registrar pago:', err.message)
@@ -281,7 +295,7 @@ router.patch('/:id/payment', async (req, res) => {
 // GET /api/quotes/summary/payments - resumen financiero
 router.get('/summary/payments', async (req, res) => {
   try {
-    const quotes = await prisma.quote.findMany({ include: { items: true } })
+    const quotes = await prisma.quote.findMany({ where: { deletedAt: null }, include: { items: true } })
 
     let totalQuoted = 0, totalPaid = 0, totalPending = 0
     let countPaid = 0, countPending = 0, countPartial = 0
@@ -307,7 +321,7 @@ router.get('/summary/payments', async (req, res) => {
 router.get('/list/projects', async (req, res) => {
   try {
     const projects = await prisma.project.findMany({
-      where: { status: { in: ['ACTIVE', 'PAUSED'] } },
+      where: { status: { in: ['ACTIVE', 'PAUSED'] }, deletedAt: null },
       select: { id: true, name: true, color: true },
       orderBy: { name: 'asc' }
     })
