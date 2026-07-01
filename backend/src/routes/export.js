@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import ExcelJS from 'exceljs'
 import PDFDocument from 'pdfkit'
-import { authenticate, requireTab } from '../middleware/auth.js'
+import { authenticate, requireTab, requireAdmin } from '../middleware/auth.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -239,6 +239,7 @@ router.get('/quotes.xlsx', async (req, res) => {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: 'Sin permisos' })
 
     const quotes = await prisma.quote.findMany({
+      where: { deletedAt: null },
       include: { items: true, createdBy: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     })
@@ -359,6 +360,185 @@ router.get('/quote/:id.xlsx', async (req, res) => {
   } catch (err) {
     console.error('Error export cotización xlsx:', err.message)
     res.status(500).json({ error: 'Error al exportar' })
+  }
+})
+
+
+// ===== REPORTE EJECUTIVO MENSUAL (solo admins) =====
+
+async function getMonthlyData(monthStr) {
+  // monthStr: 'YYYY-MM' (default: mes actual)
+  const now = new Date()
+  const [y, m] = (monthStr || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`).split('-').map(Number)
+  const start = new Date(y, m - 1, 1)
+  const end = new Date(y, m, 1)
+  const monthName = start.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })
+
+  const [paidQuotes, createdQuotes, allQuotes, orders, deliveries, outMovs, projects] = await Promise.all([
+    prisma.quote.findMany({ where: { deletedAt: null, paidAt: { gte: start, lt: end } }, include: { items: true } }),
+    prisma.quote.findMany({ where: { deletedAt: null, createdAt: { gte: start, lt: end } }, include: { items: true } }),
+    prisma.quote.findMany({ where: { deletedAt: null }, include: { items: true } }),
+    prisma.purchaseOrder.findMany({ where: { date: { gte: start, lt: end } }, include: { movements: true } }),
+    prisma.delivery.findMany({ where: { date: { gte: start, lt: end } }, include: { project: { select: { name: true } }, quote: { select: { folio: true } } }, orderBy: { date: 'asc' } }),
+    prisma.inventoryMovement.findMany({ where: { type: 'OUT', createdAt: { gte: start, lt: end } }, include: { item: { select: { name: true, unit: true } } } }),
+    prisma.project.findMany({ where: { deletedAt: null, status: 'ACTIVE' }, include: { tasks: { select: { status: true } } } })
+  ])
+
+  const quoteTotal = (q) => q.items.reduce((s, i) => s + (i.unitPrice * i.quantity - i.discount), 0) * (1 + q.taxRate / 100)
+  const cobradoMes = paidQuotes.reduce((s, q) => s + q.paidAmount, 0)
+  const cotizadoMes = createdQuotes.reduce((s, q) => s + quoteTotal(q), 0)
+  const porCobrar = allQuotes.reduce((s, q) => s + Math.max(0, quoteTotal(q) - q.paidAmount), 0)
+  const compradoMes = orders.reduce((s, o) => s + o.movements.reduce((t, m) => t + m.quantity * (m.unitPrice || 0), 0), 0)
+
+  // Consumo por artículo (top 10)
+  const consumo = {}
+  outMovs.forEach(m => {
+    const key = m.item.name
+    if (!consumo[key]) consumo[key] = { name: key, unit: m.item.unit, qty: 0 }
+    consumo[key].qty += m.quantity
+  })
+  const topConsumo = Object.values(consumo).sort((a, b) => b.qty - a.qty).slice(0, 10)
+
+  const proyectos = projects.map(p => {
+    const total = p.tasks.length
+    const done = p.tasks.filter(t => t.status === 'DONE').length
+    return { name: p.name, client: p.client, progress: total > 0 ? Math.round(done / total * 100) : 0, budget: p.budget }
+  })
+
+  return { monthName, cobradoMes, cotizadoMes, porCobrar, compradoMes, deliveries, topConsumo, proyectos, paidQuotes, createdQuotes }
+}
+
+// GET /api/export/monthly-report.pdf?month=YYYY-MM
+router.get('/monthly-report.pdf', requireAdmin, async (req, res) => {
+  try {
+    const d = await getMonthlyData(req.query.month)
+
+    const doc = new PDFDocument({ margin: 50, size: 'LETTER' })
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="reporte-${req.query.month || 'mensual'}.pdf"`)
+    doc.pipe(res)
+
+    doc.fontSize(20).fillColor('#0F6E56').text('ICAPSA', { continued: true })
+       .fillColor('#888').fontSize(10).text('  Reporte Ejecutivo Mensual')
+    doc.fontSize(14).fillColor('#111').text(d.monthName.charAt(0).toUpperCase() + d.monthName.slice(1))
+    doc.fontSize(8).fillColor('#999').text(`Generado: ${new Date().toLocaleString('es-MX')}`)
+    doc.moveDown(1)
+
+    // Finanzas
+    doc.fontSize(13).fillColor('#0F6E56').text('Finanzas')
+    doc.moveDown(0.3)
+    doc.fontSize(10).fillColor('#333')
+    doc.text(`Cobrado en el mes: $${d.cobradoMes.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`)
+    doc.text(`Cotizado en el mes: $${d.cotizadoMes.toLocaleString('es-MX', { minimumFractionDigits: 2 })} (${d.createdQuotes.length} cotizaciones)`)
+    doc.text(`Por cobrar (global): $${d.porCobrar.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`)
+    doc.text(`Comprado en el mes (OCs): $${d.compradoMes.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`)
+    doc.moveDown(1)
+
+    // Proyectos activos
+    doc.fontSize(13).fillColor('#0F6E56').text('Proyectos activos')
+    doc.moveDown(0.3)
+    if (d.proyectos.length === 0) doc.fontSize(9).fillColor('#888').text('Sin proyectos activos')
+    d.proyectos.forEach(p => {
+      doc.fontSize(9).fillColor('#111').text(`• ${p.name}`, { continued: true })
+         .fillColor('#888').text(`  ${p.progress}% avance${p.client ? ' · ' + p.client : ''}`)
+    })
+    doc.moveDown(1)
+
+    // Entregas del mes
+    doc.fontSize(13).fillColor('#0F6E56').text(`Entregas del mes (${d.deliveries.length})`)
+    doc.moveDown(0.3)
+    if (d.deliveries.length === 0) doc.fontSize(9).fillColor('#888').text('Sin entregas registradas')
+    d.deliveries.slice(0, 20).forEach(e => {
+      doc.fontSize(9).fillColor('#111').text(`• ${e.folio}`, { continued: true })
+         .fillColor('#888').text(`  ${e.recipient} · ${new Date(e.date).toLocaleDateString('es-MX')}${e.quote ? ' · ' + e.quote.folio : ''}`)
+    })
+    doc.moveDown(1)
+
+    // Consumo de inventario
+    doc.fontSize(13).fillColor('#0F6E56').text('Consumo de inventario (top 10)')
+    doc.moveDown(0.3)
+    if (d.topConsumo.length === 0) doc.fontSize(9).fillColor('#888').text('Sin salidas registradas')
+    d.topConsumo.forEach(c => {
+      doc.fontSize(9).fillColor('#111').text(`• ${c.name}`, { continued: true })
+         .fillColor('#888').text(`  ${c.qty} ${c.unit}`)
+    })
+
+    doc.end()
+  } catch (err) {
+    console.error('Error reporte PDF:', err.message)
+    res.status(500).json({ error: 'Error al generar reporte' })
+  }
+})
+
+// GET /api/export/monthly-report.xlsx?month=YYYY-MM
+router.get('/monthly-report.xlsx', requireAdmin, async (req, res) => {
+  try {
+    const d = await getMonthlyData(req.query.month)
+
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'ICAPSA'
+
+    // Hoja Resumen
+    const ws = wb.addWorksheet('Resumen')
+    ws.columns = [{ width: 34 }, { width: 22 }]
+    ws.addRow([`Reporte Ejecutivo — ${d.monthName}`]).font = { bold: true, size: 14 }
+    ws.addRow([])
+    const rows = [
+      ['Cobrado en el mes', d.cobradoMes],
+      ['Cotizado en el mes', d.cotizadoMes],
+      ['Por cobrar (global)', d.porCobrar],
+      ['Comprado en el mes (OCs)', d.compradoMes],
+      ['Entregas realizadas', d.deliveries.length],
+      ['Proyectos activos', d.proyectos.length]
+    ]
+    rows.forEach(([k, v]) => {
+      const r = ws.addRow([k, v])
+      if (typeof v === 'number' && k !== 'Entregas realizadas' && k !== 'Proyectos activos') r.getCell(2).numFmt = '"$"#,##0.00'
+    })
+
+    // Hoja Proyectos
+    const wp = wb.addWorksheet('Proyectos')
+    wp.columns = [
+      { header: 'Proyecto', key: 'name', width: 32 },
+      { header: 'Cliente', key: 'client', width: 24 },
+      { header: 'Avance %', key: 'progress', width: 12 },
+      { header: 'Presupuesto', key: 'budget', width: 16 }
+    ]
+    wp.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    wp.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D9E75' } }
+    d.proyectos.forEach(p => wp.addRow(p))
+    wp.getColumn('budget').numFmt = '"$"#,##0.00'
+
+    // Hoja Entregas
+    const we = wb.addWorksheet('Entregas')
+    we.columns = [
+      { header: 'Folio', key: 'folio', width: 16 },
+      { header: 'Destinatario', key: 'recipient', width: 26 },
+      { header: 'Cotización', key: 'quote', width: 16 },
+      { header: 'Fecha', key: 'date', width: 14 }
+    ]
+    we.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    we.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D9E75' } }
+    d.deliveries.forEach(e => we.addRow({ folio: e.folio, recipient: e.recipient, quote: e.quote?.folio || '', date: new Date(e.date).toLocaleDateString('es-MX') }))
+
+    // Hoja Consumo
+    const wc = wb.addWorksheet('Consumo')
+    wc.columns = [
+      { header: 'Artículo', key: 'name', width: 32 },
+      { header: 'Cantidad', key: 'qty', width: 12 },
+      { header: 'Unidad', key: 'unit', width: 10 }
+    ]
+    wc.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    wc.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D9E75' } }
+    d.topConsumo.forEach(c => wc.addRow(c))
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="reporte-${req.query.month || 'mensual'}.xlsx"`)
+    await wb.xlsx.write(res)
+    res.end()
+  } catch (err) {
+    console.error('Error reporte Excel:', err.message)
+    res.status(500).json({ error: 'Error al generar reporte' })
   }
 })
 
