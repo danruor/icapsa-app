@@ -22,17 +22,17 @@ router.get('/', async (req, res) => {
       recentTasks,
       upcomingDeadlines
     ] = await Promise.all([
-      prisma.project.count({ where: { members: { some: { userId } } } }),
-      prisma.project.count({ where: { members: { some: { userId } }, status: 'ACTIVE' } }),
-      prisma.task.count({ where: { project: { members: { some: { userId } } } } }),
+      prisma.project.count({ where: { deletedAt: null, members: { some: { userId } } } }),
+      prisma.project.count({ where: { deletedAt: null, members: { some: { userId } }, status: 'ACTIVE' } }),
+      prisma.task.count({ where: { project: { deletedAt: null, members: { some: { userId } } } } }),
       prisma.task.count({ where: { assigneeId: userId, status: { not: 'DONE' } } }),
       prisma.task.groupBy({
         by: ['status'],
-        where: { project: { members: { some: { userId } } } },
+        where: { project: { deletedAt: null, members: { some: { userId } } } },
         _count: true
       }),
       prisma.task.findMany({
-        where: { project: { members: { some: { userId } } } },
+        where: { project: { deletedAt: null, members: { some: { userId } } } },
         include: {
           project: { select: { id: true, name: true } },
           assignee: { select: { id: true, name: true } }
