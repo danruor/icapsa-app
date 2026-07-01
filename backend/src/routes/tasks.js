@@ -1,12 +1,13 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticate } from '../middleware/auth.js'
+import { authenticate, requireTab } from '../middleware/auth.js'
 import { notify, logActivity } from '../lib/events.js'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 router.use(authenticate)
+router.use(requireTab('projects'))
 
 // GET /api/tasks?projectId=xxx
 router.get('/', async (req, res) => {
@@ -74,7 +75,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(task)
   } catch (err) {
     console.error('Error al crear tarea:', err.message)
-    res.status(500).json({ error: 'Error al crear tarea: ' + err.message })
+    res.status(500).json({ error: 'Error al crear tarea' })
   }
 })
 
@@ -124,7 +125,7 @@ router.patch('/:id', async (req, res) => {
     res.json(task)
   } catch (err) {
     console.error('Error al actualizar tarea:', err.message)
-    res.status(500).json({ error: 'Error al actualizar tarea: ' + err.message })
+    res.status(500).json({ error: 'Error al actualizar tarea' })
   }
 })
 
