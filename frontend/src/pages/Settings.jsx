@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Users, Shield, Plus, Pencil, Trash2, Check, X, UserCog, FolderKanban, Power } from 'lucide-react'
+import { Users, Shield, Plus, Pencil, Trash2, Check, X, UserCog, FolderKanban, Power, ScrollText, RotateCcw } from 'lucide-react'
 import api from '../lib/api'
 import { useAuthStore } from '../lib/authStore'
 
@@ -27,7 +27,8 @@ export default function Settings() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar'] })
-  const [projectModal, setProjectModal] = useState(null) // user being edited for projects
+  const [projectModal, setProjectModal] = useState(null)
+  const [adminTab, setAdminTab] = useState('users') // user being edited for projects
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -105,6 +106,27 @@ export default function Settings() {
         <h1 className="text-xl font-semibold text-gray-900">Administración</h1>
       </div>
       <p className="text-sm text-gray-500 mb-6">Gestión de usuarios, roles y permisos</p>
+
+      {/* Sub-pestañas (Auditoría y Papelera solo para super admin) */}
+      {currentUser?.role === 'SUPER_ADMIN' && (
+        <div className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto scrollbar-thin">
+          {[
+            { key: 'users', label: 'Usuarios', icon: Users },
+            { key: 'audit', label: 'Auditoría', icon: ScrollText },
+            { key: 'trash', label: 'Papelera', icon: Trash2 }
+          ].map(t => (
+            <button key={t.key} onClick={() => setAdminTab(t.key)}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap flex-shrink-0 ${adminTab === t.key ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              <t.icon size={15} /> {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {adminTab === 'audit' && <AuditView />}
+      {adminTab === 'trash' && <TrashView />}
+
+      {adminTab === 'users' && <>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -226,6 +248,8 @@ export default function Settings() {
       </div>
 
       {/* MODAL: User form */}
+      </>}
+
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -384,5 +408,136 @@ function ProjectAccessEditor({ user, projects, onSave, onCancel, saving }) {
         </button>
       </div>
     </>
+  )
+}
+
+
+// ===== BITÁCORA DE AUDITORÍA (solo super admin) =====
+function AuditView() {
+  const { data: logs = [], isLoading } = useQuery({
+    queryKey: ['admin-audit'],
+    queryFn: () => api.get('/admin/audit').then(r => r.data)
+  })
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+      <table className="w-full text-sm min-w-[640px]">
+        <thead>
+          <tr className="border-b border-gray-100 text-left text-xs text-gray-500">
+            <th className="px-4 py-3 font-medium">Fecha</th>
+            <th className="px-4 py-3 font-medium">Usuario</th>
+            <th className="px-4 py-3 font-medium">Acción</th>
+            <th className="px-4 py-3 font-medium">Proyecto</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {isLoading && <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>}
+          {!isLoading && logs.length === 0 && (
+            <tr><td colSpan="4" className="px-4 py-10 text-center text-gray-400">Sin registros todavía</td></tr>
+          )}
+          {logs.map(a => (
+            <tr key={a.id} className="hover:bg-gray-50">
+              <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                {new Date(a.createdAt).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </td>
+              <td className="px-4 py-2.5 font-medium text-gray-900 whitespace-nowrap">{a.user?.name || '—'}</td>
+              <td className="px-4 py-2.5 text-gray-700">{a.detail}</td>
+              <td className="px-4 py-2.5 text-gray-500 text-xs">{a.project?.name || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="px-4 py-2 text-[10px] text-gray-400 border-t border-gray-100">Se muestran los últimos 300 eventos: inicios de sesión, cambios de usuarios, pagos, eliminaciones y restauraciones.</p>
+    </div>
+  )
+}
+
+// ===== PAPELERA (solo super admin) =====
+function TrashView() {
+  const qc = useQueryClient()
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-trash'],
+    queryFn: () => api.get('/admin/trash').then(r => r.data)
+  })
+  const restore = useMutation({
+    mutationFn: (payload) => api.post('/admin/trash/restore', payload),
+    onSuccess: () => {
+      qc.invalidateQueries(['admin-trash'])
+      qc.invalidateQueries(['projects'])
+      qc.invalidateQueries(['quotes'])
+    },
+    onError: (e) => alert(e.response?.data?.error || 'Error al restaurar')
+  })
+  const purge = useMutation({
+    mutationFn: ({ type, id }) => api.delete(`/admin/trash/${type}/${id}`),
+    onSuccess: () => qc.invalidateQueries(['admin-trash']),
+    onError: (e) => alert(e.response?.data?.error || 'Error al eliminar')
+  })
+
+  const projects = data?.projects || []
+  const quotes = data?.quotes || []
+  const daysLeft = (deletedAt) => Math.max(0, 30 - Math.floor((Date.now() - new Date(deletedAt)) / 86400000))
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-700">
+        Lo que envíes a la papelera se conserva 30 días y luego se elimina definitivamente de forma automática.
+      </div>
+
+      {isLoading && <p className="text-center text-gray-400 py-6">Cargando papelera...</p>}
+      {!isLoading && projects.length === 0 && quotes.length === 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 py-12 text-center text-gray-400">
+          <Trash2 size={32} className="mx-auto mb-2 opacity-30" />
+          <p className="text-sm">La papelera está vacía</p>
+        </div>
+      )}
+
+      {projects.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <p className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100">Proyectos ({projects.length})</p>
+          <div className="divide-y divide-gray-50">
+            {projects.map(p => (
+              <div key={p.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-[180px]">
+                  <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                  <p className="text-xs text-gray-400">{p.client || 'Sin cliente'} · {p._count.tasks} tareas · quedan {daysLeft(p.deletedAt)} días</p>
+                </div>
+                <button onClick={() => restore.mutate({ type: 'project', id: p.id })}
+                  className="flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 border border-brand-200 hover:bg-brand-50 px-3 py-1.5 rounded-lg">
+                  <RotateCcw size={13} /> Restaurar
+                </button>
+                <button onClick={() => { if (confirm(`¿Eliminar DEFINITIVAMENTE el proyecto "${p.name}"? Esta acción no se puede deshacer.`)) purge.mutate({ type: 'project', id: p.id }) }}
+                  className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg">
+                  <Trash2 size={13} /> Eliminar
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {quotes.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <p className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100">Cotizaciones ({quotes.length})</p>
+          <div className="divide-y divide-gray-50">
+            {quotes.map(q => (
+              <div key={q.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-[180px]">
+                  <p className="text-sm font-medium text-gray-900">{q.folio}</p>
+                  <p className="text-xs text-gray-400">{q.clientName} · quedan {daysLeft(q.deletedAt)} días</p>
+                </div>
+                <button onClick={() => restore.mutate({ type: 'quote', id: q.id })}
+                  className="flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 border border-brand-200 hover:bg-brand-50 px-3 py-1.5 rounded-lg">
+                  <RotateCcw size={13} /> Restaurar
+                </button>
+                <button onClick={() => { if (confirm(`¿Eliminar DEFINITIVAMENTE la cotización ${q.folio}? Esta acción no se puede deshacer.`)) purge.mutate({ type: 'quote', id: q.id }) }}
+                  className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg">
+                  <Trash2 size={13} /> Eliminar
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
