@@ -199,7 +199,7 @@ export default function Inventory() {
             {filtered.map(item => {
               const low = item.quantity <= item.minStock
               return (
-                <tr key={item.id} className="hover:bg-gray-50">
+                <tr key={item.id} className={low ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-gray-50'}>
                   <td className="px-4 py-3">
                     <button onClick={() => setKardexItem(item)} className="font-medium text-gray-900 hover:text-brand-600 text-left flex items-center gap-1.5">
                       {item.name}
