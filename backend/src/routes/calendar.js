@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 
     // Proyectos del usuario (con fechas y color)
     const projects = await prisma.project.findMany({
-      where: projectFilter,
+      where: { ...projectFilter, deletedAt: null },
       select: { id: true, name: true, color: true, startDate: true, endDate: true }
     })
     const projectIds = projects.map(p => p.id)
@@ -28,6 +28,7 @@ router.get('/', async (req, res) => {
     // Tareas con fecha de vencimiento
     const tasks = await prisma.task.findMany({
       where: {
+        project: { deletedAt: null },
         projectId: { in: projectIds },
         dueDate: { not: null },
         ...(start && end && { dueDate: { gte: new Date(start), lte: new Date(end) } })
