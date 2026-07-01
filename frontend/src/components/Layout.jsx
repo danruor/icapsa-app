@@ -4,6 +4,7 @@ import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, L
 import { useAuthStore } from '../lib/authStore'
 import api from '../lib/api'
 import NotificationBell from './NotificationBell'
+import GlobalSearch from './GlobalSearch'
 import clsx from 'clsx'
 
 const nav = [
@@ -120,14 +121,16 @@ export default function Layout() {
             <Building2 size={18} className="text-brand-500" />
             <span className="text-white font-semibold text-sm">ICAPSA</span>
           </div>
-          <NotificationBell dark />
+          <div className="flex items-center gap-4">
+            <GlobalSearch dark />
+            <NotificationBell dark />
+          </div>
         </header>
 
         {/* Desktop top bar with notifications */}
-        <header className="hidden md:flex items-center justify-end px-8 py-3 bg-white border-b border-gray-200">
-          <div className="text-gray-600">
-            <NotificationBell />
-          </div>
+        <header className="hidden md:flex items-center justify-end gap-5 px-8 py-3 bg-white border-b border-gray-200">
+          <GlobalSearch />
+          <NotificationBell />
         </header>
 
         <main className="flex-1 overflow-auto">
