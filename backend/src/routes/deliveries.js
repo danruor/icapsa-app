@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticate, requireTab } from '../middleware/auth.js'
-import { logActivity } from '../lib/events.js'
+import { logActivity, notifyLowStock } from '../lib/events.js'
 import { nextFolio } from '../lib/folio.js'
 
 const router = Router()
@@ -57,6 +57,7 @@ router.get('/:id', async (req, res) => {
 router.get('/list/quotes', async (req, res) => {
   try {
     const quotes = await prisma.quote.findMany({
+      where: { deletedAt: null },
       select: { id: true, folio: true, clientName: true },
       orderBy: { createdAt: 'desc' },
       take: 100
@@ -71,7 +72,7 @@ router.get('/list/quotes', async (req, res) => {
 // items: [{ itemId, quantity }]
 router.post('/', async (req, res) => {
   try {
-    const { recipient, notes, date, projectId, quoteId, items } = req.body
+    const { recipient, notes, date, projectId, quoteId, items, signature } = req.body
     if (!recipient) return res.status(400).json({ error: 'El destinatario es requerido' })
     if (!items || items.length === 0) return res.status(400).json({ error: 'Agrega al menos un artículo' })
 
@@ -92,6 +93,7 @@ router.post('/', async (req, res) => {
         delivery = await prisma.delivery.create({
           data: {
             folio, recipient, notes,
+            signature: signature || null,
             date: date ? new Date(date) : new Date(),
             projectId: projectId || null,
             quoteId: quoteId || null,
@@ -113,10 +115,11 @@ router.post('/', async (req, res) => {
       const item = await prisma.inventoryItem.findUnique({ where: { id: it.itemId } })
       if (!item) continue
 
-      await prisma.inventoryItem.update({
+      const updatedItem = await prisma.inventoryItem.update({
         where: { id: it.itemId },
         data: { quantity: Math.max(0, item.quantity - qty) }
       })
+      await notifyLowStock(updatedItem)
 
       await prisma.inventoryMovement.create({
         data: {
