@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import ExcelJS from 'exceljs'
 import PDFDocument from 'pdfkit'
-import { authenticate } from '../middleware/auth.js'
+import { authenticate, requireTab } from '../middleware/auth.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -13,7 +13,7 @@ const statusNames = { TODO: 'Por hacer', IN_PROGRESS: 'En progreso', REVIEW: 'En
 const priorityNames = { LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', URGENT: 'Urgente' }
 
 // GET /api/export/inventory.xlsx?projectId=xxx
-router.get('/inventory.xlsx', async (req, res) => {
+router.get('/inventory.xlsx', requireTab('inventory'), async (req, res) => {
   try {
     const { projectId } = req.query
     const items = await prisma.inventoryItem.findMany({
@@ -70,7 +70,7 @@ router.get('/inventory.xlsx', async (req, res) => {
 })
 
 // GET /api/export/project/:id.pdf - reporte de proyecto en PDF
-router.get('/project/:id.pdf', async (req, res) => {
+router.get('/project/:id.pdf', requireTab('projects'), async (req, res) => {
   try {
     const project = await prisma.project.findUnique({
       where: { id: req.params.id },
