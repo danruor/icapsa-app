@@ -13,7 +13,7 @@ router.get('/', async (req, res) => {
   try {
     const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)
     const projects = await prisma.project.findMany({
-      where: isAdmin ? {} : { members: { some: { userId: req.user.id } } },
+      where: isAdmin ? { deletedAt: null } : { deletedAt: null, members: { some: { userId: req.user.id } } },
       include: {
         members: { include: { user: { select: { id: true, name: true, email: true } } } },
         tasks: { select: { status: true } },
@@ -76,8 +76,8 @@ router.get('/:id', async (req, res) => {
     const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)
     const project = await prisma.project.findFirst({
       where: isAdmin
-        ? { id: req.params.id }
-        : { id: req.params.id, members: { some: { userId: req.user.id } } },
+        ? { id: req.params.id, deletedAt: null }
+        : { id: req.params.id, deletedAt: null, members: { some: { userId: req.user.id } } },
       include: {
         members: { include: { user: { select: { id: true, name: true, email: true, role: true } } } },
         tasks: { include: { assignee: { select: { id: true, name: true } }, creator: { select: { id: true, name: true } }, _count: { select: { files: true } } }, orderBy: { createdAt: 'desc' } },
@@ -122,8 +122,15 @@ router.patch('/:id', async (req, res) => {
 // DELETE /api/projects/:id
 router.delete('/:id', async (req, res) => {
   try {
-    await prisma.project.delete({ where: { id: req.params.id } })
-    res.json({ message: 'Proyecto eliminado' })
+    const project = await prisma.project.update({
+      where: { id: req.params.id },
+      data: { deletedAt: new Date() }
+    })
+    await logActivity({
+      userId: req.user.id, action: 'project_trashed',
+      detail: `envió el proyecto "${project.name}" a la papelera`
+    })
+    res.json({ message: 'Proyecto enviado a la papelera (recuperable por 30 días)' })
   } catch {
     res.status(500).json({ error: 'Error al eliminar proyecto' })
   }
@@ -189,7 +196,7 @@ router.get('/:id/activity', async (req, res) => {
 router.get('/:id/quotes', async (req, res) => {
   try {
     const quotes = await prisma.quote.findMany({
-      where: { projectId: req.params.id },
+      where: { projectId: req.params.id, deletedAt: null },
       include: { items: true, createdBy: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }
     })
