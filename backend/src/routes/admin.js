@@ -32,7 +32,10 @@ router.get('/users', async (req, res) => {
 // POST /api/admin/users - crear usuario
 router.post('/users', async (req, res) => {
   try {
-    const { email, password, name, role, phone, position, projectIds, visibleTabs } = req.body
+    let { email, password, name, role, phone, position, projectIds, visibleTabs } = req.body
+    if (email) email = email.trim().toLowerCase()
+    if (password && password.length < 8)
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' })
     if (!email || !password || !name)
       return res.status(400).json({ error: 'Email, contraseña y nombre son requeridos' })
 
@@ -60,7 +63,7 @@ router.post('/users', async (req, res) => {
     res.status(201).json(user)
   } catch (err) {
     console.error('Error crear usuario:', err.message)
-    res.status(500).json({ error: 'Error al crear usuario: ' + err.message })
+    res.status(500).json({ error: 'Error al crear usuario' })
   }
 })
 
@@ -88,6 +91,8 @@ router.patch('/users/:id', async (req, res) => {
       ...(isActive !== undefined && { isActive }),
       ...(Array.isArray(visibleTabs) && { visibleTabs: visibleTabs.join(',') })
     }
+    if (password && password.length < 8)
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' })
     if (password) data.password = await bcrypt.hash(password, 12)
 
     const user = await prisma.user.update({
@@ -98,7 +103,7 @@ router.patch('/users/:id', async (req, res) => {
     res.json(user)
   } catch (err) {
     console.error('Error editar usuario:', err.message)
-    res.status(500).json({ error: 'Error al actualizar usuario: ' + err.message })
+    res.status(500).json({ error: 'Error al actualizar usuario' })
   }
 })
 
@@ -148,7 +153,7 @@ router.put('/users/:id/projects', async (req, res) => {
     res.json(updated)
   } catch (err) {
     console.error('Error asignar proyectos:', err.message)
-    res.status(500).json({ error: 'Error al asignar proyectos: ' + err.message })
+    res.status(500).json({ error: 'Error al asignar proyectos' })
   }
 })
 
