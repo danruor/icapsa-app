@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticate } from '../middleware/auth.js'
+import { nextFolio } from '../lib/folio.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -138,31 +139,37 @@ router.post('/', async (req, res) => {
     const { clientName, clientEmail, clientPhone, notes, taxRate, validUntil, items, projectId } = req.body
     if (!clientName) return res.status(400).json({ error: 'El nombre del cliente es requerido' })
 
-    // Generar folio: COT-YYYY-NNNN
-    const year = new Date().getFullYear()
-    const count = await prisma.quote.count()
-    const folio = `COT-${year}-${String(count + 1).padStart(4, '0')}`
-
-    const quote = await prisma.quote.create({
-      data: {
-        folio, clientName, clientEmail, clientPhone, notes,
-        taxRate: taxRate !== undefined ? parseFloat(taxRate) : 16,
-        validUntil: validUntil ? new Date(validUntil) : null,
-        createdById: req.user.id,
-        projectId: projectId || null,
-        items: {
-          create: (items || []).map(it => ({
-            name: it.name,
-            unit: it.unit || 'pza',
-            quantity: parseInt(it.quantity) || 1,
-            unitPrice: parseFloat(it.unitPrice) || 0,
-            discount: parseFloat(it.discount) || 0,
-            productId: it.productId || null
-          }))
-        }
-      },
-      include: { items: true, createdBy: { select: { name: true } } }
-    })
+    // Crear con folio secuencial seguro; reintentar si hay colisión concurrente
+    let quote
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const folio = await nextFolio('quote', 'COT')
+      try {
+        quote = await prisma.quote.create({
+          data: {
+            folio, clientName, clientEmail, clientPhone, notes,
+            taxRate: taxRate !== undefined ? parseFloat(taxRate) : 16,
+            validUntil: validUntil ? new Date(validUntil) : null,
+            createdById: req.user.id,
+            projectId: projectId || null,
+            items: {
+              create: (items || []).map(it => ({
+                name: it.name,
+                unit: it.unit || 'pza',
+                quantity: parseInt(it.quantity) || 1,
+                unitPrice: parseFloat(it.unitPrice) || 0,
+                discount: parseFloat(it.discount) || 0,
+                productId: it.productId || null
+              }))
+            }
+          },
+          include: { items: true, createdBy: { select: { name: true } } }
+        })
+        break // éxito
+      } catch (e) {
+        if (e.code === 'P2002' && attempt < 4) continue // folio duplicado, reintentar
+        throw e
+      }
+    }
     res.status(201).json(quote)
   } catch (err) {
     console.error('Error crear cotización:', err.message)
