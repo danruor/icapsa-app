@@ -1,12 +1,13 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticate } from '../middleware/auth.js'
+import { authenticate, requireTab } from '../middleware/auth.js'
 import { logActivity } from '../lib/events.js'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 router.use(authenticate)
+router.use(requireTab('inventory'))
 
 // GET /api/inventory?projectId=xxx  (sin projectId = inventario general)
 router.get('/', async (req, res) => {
