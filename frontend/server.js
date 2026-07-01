@@ -6,6 +6,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 3000
 
+// Redirigir HTTP → HTTPS (Railway indica el protocolo original en x-forwarded-proto)
+app.use((req, res, next) => {
+  if (req.headers['x-forwarded-proto'] === 'http') {
+    return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`)
+  }
+  next()
+})
+
 // Headers de seguridad (sin dependencias externas)
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff')          // evita sniffing de MIME
