@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticate, requireTab } from '../middleware/auth.js'
-import { logActivity } from '../lib/events.js'
+import { logActivity, notifyLowStock } from '../lib/events.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -158,6 +158,8 @@ router.post('/:id/movement', async (req, res) => {
       where: { id: req.params.id },
       include: { project: { select: { id: true, name: true, color: true } } }
     })
+
+    if (type !== 'IN') await notifyLowStock(updated)
 
     if (updated.projectId) {
       const typeNames = { IN: 'entrada', OUT: 'salida', ADJUST: 'ajuste' }
