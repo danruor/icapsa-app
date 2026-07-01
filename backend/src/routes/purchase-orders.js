@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticate } from '../middleware/auth.js'
 import { logActivity } from '../lib/events.js'
+import { nextFolio } from '../lib/folio.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -63,20 +64,26 @@ router.post('/', async (req, res) => {
     if (!supplier) return res.status(400).json({ error: 'El proveedor es requerido' })
     if (!items || items.length === 0) return res.status(400).json({ error: 'Agrega al menos un artículo' })
 
-    // Folio: OC-YYYY-NNNN
-    const year = new Date().getFullYear()
-    const count = await prisma.purchaseOrder.count()
-    const folio = `OC-${year}-${String(count + 1).padStart(4, '0')}`
-
-    // Crear la orden
-    const order = await prisma.purchaseOrder.create({
-      data: {
-        folio, supplier, notes,
-        date: date ? new Date(date) : new Date(),
-        projectId: projectId || null,
-        createdById: req.user.id
+    // Crear la orden con folio secuencial seguro (reintenta si hay colisión)
+    let order
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const folio = await nextFolio('purchaseOrder', 'OC')
+      try {
+        order = await prisma.purchaseOrder.create({
+          data: {
+            folio, supplier, notes,
+            date: date ? new Date(date) : new Date(),
+            projectId: projectId || null,
+            createdById: req.user.id
+          }
+        })
+        break
+      } catch (e) {
+        if (e.code === 'P2002' && attempt < 4) continue
+        throw e
       }
-    })
+    }
+    const folio = order.folio
 
     // Procesar cada artículo: crear si es nuevo, subir stock, registrar movimiento ligado a la OC
     for (const it of items) {
