@@ -1,11 +1,12 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticate } from '../middleware/auth.js'
+import { authenticate, requireTab } from '../middleware/auth.js'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 router.use(authenticate)
+router.use(requireTab('calendar'))
 
 // GET /api/calendar?projectId=xxx&start=ISO&end=ISO
 // Devuelve eventos del calendario: tareas con fecha + inicio/fin de proyectos
