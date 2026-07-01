@@ -2,17 +2,20 @@ import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { PrismaClient } from '@prisma/client'
-import { authenticate } from '../middleware/auth.js'
+import { authenticate, requireAdmin } from '../middleware/auth.js'
 
 const router = Router()
 const prisma = new PrismaClient()
 
-// POST /api/auth/register
-router.post('/register', async (req, res) => {
+// POST /api/auth/register — SOLO administradores (registro público deshabilitado)
+router.post('/register', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { email, password, name } = req.body
+    let { email, password, name } = req.body
     if (!email || !password || !name)
       return res.status(400).json({ error: 'Todos los campos son requeridos' })
+    email = email.trim().toLowerCase()
+    if (password.length < 8)
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' })
 
     const exists = await prisma.user.findUnique({ where: { email } })
     if (exists)
@@ -39,9 +42,10 @@ router.post('/register', async (req, res) => {
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body
+    let { email, password } = req.body
     if (!email || !password)
       return res.status(400).json({ error: 'Correo y contraseña requeridos' })
+    email = email.trim().toLowerCase()
 
     const user = await prisma.user.findUnique({ where: { email } })
     if (!user)
