@@ -14,7 +14,7 @@ export const authenticate = async (req, res, next) => {
 
     const user = await prisma.user.findUnique({
       where: { id: payload.id },
-      select: { id: true, email: true, role: true, isActive: true }
+      select: { id: true, email: true, role: true, isActive: true, visibleTabs: true }
     })
     if (!user || !user.isActive)
       return res.status(401).json({ error: 'Usuario inactivo o no encontrado' })
@@ -36,4 +36,13 @@ export const requireAdmin = (req, res, next) => {
   if (!['SUPER_ADMIN', 'ADMIN'].includes(req.user.role))
     return res.status(403).json({ error: 'Requiere permisos de administrador' })
   next()
+}
+
+// Verifica que el usuario tenga acceso a una pestaña (admins ven todo).
+// Refuerza en el servidor lo que el frontend solo oculta visualmente.
+export const requireTab = (tab) => (req, res, next) => {
+  if (['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) return next()
+  const allowed = (req.user.visibleTabs || '').split(',').map(t => t.trim())
+  if (allowed.includes(tab)) return next()
+  res.status(403).json({ error: 'No tienes acceso a esta sección' })
 }
