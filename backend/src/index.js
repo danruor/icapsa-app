@@ -16,6 +16,7 @@ import exportRoutes from './routes/export.js'
 import quotesRoutes from './routes/quotes.js'
 import purchaseOrderRoutes from './routes/purchase-orders.js'
 import deliveryRoutes from './routes/deliveries.js'
+import searchRoutes from './routes/search.js'
 
 dotenv.config()
 
@@ -67,7 +68,7 @@ const authLimiter = rateLimit({
   message: { error: 'Demasiados intentos de acceso. Espera 15 minutos.' }
 })
 
-app.use('/uploads', express.static('uploads'))
+app.use('/uploads', express.static(process.env.UPLOAD_DIR || 'uploads'))
 
 app.use('/api/auth',      authLimiter, authRoutes)
 app.use('/api/projects',  projectRoutes)
@@ -82,6 +83,7 @@ app.use('/api/export',    exportRoutes)
 app.use('/api/quotes',    quotesRoutes)
 app.use('/api/purchase-orders', purchaseOrderRoutes)
 app.use('/api/deliveries', deliveryRoutes)
+app.use('/api/search',    searchRoutes)
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 
