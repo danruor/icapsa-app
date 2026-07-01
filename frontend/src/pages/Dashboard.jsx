@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { FolderKanban, CheckSquare, Clock, AlertCircle } from 'lucide-react'
+import { FolderKanban, CheckSquare, Clock, AlertCircle, FileBarChart, Download } from 'lucide-react'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import api from '../lib/api'
+import api, { downloadFile } from '../lib/api'
 import { useAuthStore } from '../lib/authStore'
 
 const statusLabel = { TODO: 'Por hacer', IN_PROGRESS: 'En progreso', REVIEW: 'En revisión', DONE: 'Completadas' }
@@ -11,6 +12,7 @@ const priorityColor = { LOW: 'text-gray-400', MEDIUM: 'text-blue-500', HIGH: 'te
 
 export default function Dashboard() {
   const user = useAuthStore(s => s.user)
+  const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7))
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.get('/dashboard').then(r => r.data)
@@ -151,6 +153,29 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Reporte ejecutivo mensual (solo administradores) */}
+      {['SUPER_ADMIN', 'ADMIN'].includes(user?.role) && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 mt-6">
+          <div className="flex items-center gap-2 mb-1">
+            <FileBarChart size={18} className="text-brand-500" />
+            <h2 className="text-sm font-semibold text-gray-900">Reporte ejecutivo mensual</h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-4">Cobranza, compras, entregas, consumo de inventario y avance de proyectos del mes seleccionado.</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <input type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
+            <button onClick={() => downloadFile(`/export/monthly-report.pdf?month=${reportMonth}`, `reporte-${reportMonth}.pdf`)}
+              className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg">
+              <Download size={15} /> PDF
+            </button>
+            <button onClick={() => downloadFile(`/export/monthly-report.xlsx?month=${reportMonth}`, `reporte-${reportMonth}.xlsx`)}
+              className="flex items-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium px-4 py-2 rounded-lg">
+              <Download size={15} /> Excel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
