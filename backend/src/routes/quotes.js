@@ -173,7 +173,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(quote)
   } catch (err) {
     console.error('Error crear cotización:', err.message)
-    res.status(500).json({ error: 'Error al crear cotización: ' + err.message })
+    res.status(500).json({ error: 'Error al crear cotización' })
   }
 })
 
