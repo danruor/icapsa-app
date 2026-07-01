@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, PackageCheck, X, Search, ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import api from '../lib/api'
@@ -91,6 +91,12 @@ export default function DeliveriesView({ inventory, projects }) {
                         ))}
                       </div>
                       {d.notes && <p className="text-xs text-gray-400 mt-2">Nota: {d.notes}</p>}
+                      {d.signature && (
+                        <div className="mt-2">
+                          <p className="text-xs text-gray-500 mb-1">Firma de recibido:</p>
+                          <img src={d.signature} alt="Firma" className="h-20 bg-white border border-gray-200 rounded" />
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -116,6 +122,7 @@ export default function DeliveriesView({ inventory, projects }) {
 
 function DeliveryForm({ inventory, projects, onClose, onSaved }) {
   const [header, setHeader] = useState({ recipient: '', notes: '', date: new Date().toISOString().split('T')[0], projectId: '', quoteId: '' })
+  const [signature, setSignature] = useState(null)
   const [items, setItems] = useState([])
   const [search, setSearch] = useState('')
 
@@ -212,14 +219,87 @@ function DeliveryForm({ inventory, projects, onClose, onSaved }) {
           ))}
         </div>
 
+        <div className="mb-4">
+          <label className="block text-xs text-gray-500 mb-1">Firma de recibido (opcional)</label>
+          <SignaturePad onChange={setSignature} />
+        </div>
+
         <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
           <button onClick={onClose} className="border border-gray-200 text-gray-600 text-sm py-2 px-4 rounded-lg">Cancelar</button>
-          <button onClick={() => save.mutate({ ...header, items })}
+          <button onClick={() => save.mutate({ ...header, items, signature })}
             disabled={!header.recipient || items.length === 0 || items.some(i => i.quantity > i.available || i.quantity <= 0) || save.isPending}
             className="bg-brand-500 text-white text-sm py-2 px-4 rounded-lg disabled:opacity-50">
             {save.isPending ? 'Registrando...' : 'Registrar salida'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ===== Pad de firma (canvas táctil, sin dependencias) =====
+function SignaturePad({ onChange }) {
+  const canvasRef = useRef(null)
+  const drawing = useRef(false)
+  const hasInk = useRef(false)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    // Ajustar resolución al tamaño real
+    const rect = canvas.getBoundingClientRect()
+    canvas.width = rect.width * 2
+    canvas.height = rect.height * 2
+    ctx.scale(2, 2)
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = '#111827'
+  }, [])
+
+  const pos = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect()
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }
+
+  const start = (e) => {
+    e.preventDefault()
+    drawing.current = true
+    const ctx = canvasRef.current.getContext('2d')
+    const { x, y } = pos(e)
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+  }
+  const move = (e) => {
+    if (!drawing.current) return
+    e.preventDefault()
+    const ctx = canvasRef.current.getContext('2d')
+    const { x, y } = pos(e)
+    ctx.lineTo(x, y)
+    ctx.stroke()
+    hasInk.current = true
+  }
+  const end = () => {
+    if (!drawing.current) return
+    drawing.current = false
+    if (hasInk.current) onChange(canvasRef.current.toDataURL('image/png'))
+  }
+  const clear = () => {
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    hasInk.current = false
+    onChange(null)
+  }
+
+  return (
+    <div>
+      <canvas ref={canvasRef}
+        onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerLeave={end}
+        className="w-full h-32 border border-dashed border-gray-300 rounded-lg bg-gray-50 touch-none cursor-crosshair" />
+      <div className="flex justify-between items-center mt-1">
+        <p className="text-xs text-gray-400">Firma de quien recibe (con el dedo o mouse)</p>
+        <button type="button" onClick={clear} className="text-xs text-gray-500 hover:text-red-500">Limpiar</button>
       </div>
     </div>
   )
