@@ -53,6 +53,7 @@ model Project {
   longitude   Float?
   budget      Float?
   client      String?
+  deletedAt   DateTime?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -250,6 +251,7 @@ model Quote {
   paymentStatus PaymentStatus @default(PENDING)
   paidAmount  Float       @default(0)
   paidAt      DateTime?
+  deletedAt   DateTime?
   notes       String?
   taxRate     Float       @default(16)
   validUntil  DateTime?
@@ -316,6 +318,7 @@ model Delivery {
   folio       String   @unique
   recipient   String
   status      String   @default("DELIVERED")
+  signature   String?
   notes       String?
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
