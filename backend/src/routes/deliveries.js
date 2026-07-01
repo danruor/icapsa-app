@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticate } from '../middleware/auth.js'
 import { logActivity } from '../lib/events.js'
+import { nextFolio } from '../lib/folio.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -82,20 +83,27 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // Folio: ENT-YYYY-NNNN
-    const year = new Date().getFullYear()
-    const count = await prisma.delivery.count()
-    const folio = `ENT-${year}-${String(count + 1).padStart(4, '0')}`
-
-    const delivery = await prisma.delivery.create({
-      data: {
-        folio, recipient, notes,
-        date: date ? new Date(date) : new Date(),
-        projectId: projectId || null,
-        quoteId: quoteId || null,
-        createdById: req.user.id
+    // Crear la entrega con folio secuencial seguro (reintenta si hay colisión)
+    let delivery
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const folio = await nextFolio('delivery', 'ENT')
+      try {
+        delivery = await prisma.delivery.create({
+          data: {
+            folio, recipient, notes,
+            date: date ? new Date(date) : new Date(),
+            projectId: projectId || null,
+            quoteId: quoteId || null,
+            createdById: req.user.id
+          }
+        })
+        break
+      } catch (e) {
+        if (e.code === 'P2002' && attempt < 4) continue
+        throw e
       }
-    })
+    }
+    const folio = delivery.folio
 
     // Procesar salidas: bajar stock, registrar movimiento ligado a la entrega
     for (const it of items) {
