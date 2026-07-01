@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticate } from '../middleware/auth.js'
+import { authenticate, requireTab } from '../middleware/auth.js'
 import { logActivity } from '../lib/events.js'
 import { nextFolio } from '../lib/folio.js'
 
@@ -8,6 +8,7 @@ const router = Router()
 const prisma = new PrismaClient()
 
 router.use(authenticate)
+router.use(requireTab('inventory'))
 
 // GET /api/purchase-orders - lista de órdenes de compra
 router.get('/', async (req, res) => {
@@ -145,7 +146,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(full)
   } catch (err) {
     console.error('Error crear OC:', err.message)
-    res.status(500).json({ error: 'Error al crear orden de compra: ' + err.message })
+    res.status(500).json({ error: 'Error al crear orden de compra' })
   }
 })
 
