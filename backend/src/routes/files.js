@@ -8,11 +8,13 @@ import { authenticate, requireTab } from '../middleware/auth.js'
 const router = Router()
 const prisma = new PrismaClient()
 
+// Directorio de subidas: usa UPLOAD_DIR (Volume persistente en Railway) o 'uploads' local
+const UPLOAD_DIR = process.env.UPLOAD_DIR || 'uploads'
+
 const storage = multer.diskStorage({
   destination: (_, __, cb) => {
-    const dir = 'uploads'
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir)
-    cb(null, dir)
+    if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true })
+    cb(null, UPLOAD_DIR)
   },
   filename: (_, file, cb) => {
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
@@ -96,7 +98,7 @@ router.delete('/:id', async (req, res) => {
     if (!file) return res.status(404).json({ error: 'Archivo no encontrado' })
 
     const filename = file.url.split('/uploads/')[1]
-    const filePath = `uploads/${filename}`
+    const filePath = `${UPLOAD_DIR}/${filename}`
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
 
     await prisma.file.delete({ where: { id: req.params.id } })
