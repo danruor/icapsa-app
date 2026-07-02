@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useAuthStore } from './lib/authStore'
+import { applyBrand, brandForEmail } from './lib/brand'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Chat from './pages/Chat'
@@ -22,6 +24,13 @@ const AdminRoute = ({ children }) => {
   return isAdmin ? children : <Navigate to="/dashboard" replace />
 }
 
+// Aplica la identidad de marca según el correo del usuario conectado
+const BrandApplier = () => {
+  const user = useAuthStore((s) => s.user)
+  useEffect(() => { applyBrand(brandForEmail(user?.email)) }, [user?.email])
+  return null
+}
+
 const SuperAdminRoute = ({ children }) => {
   const user = useAuthStore((s) => s.user)
   return user?.role === 'SUPER_ADMIN' ? children : <Navigate to="/dashboard" replace />
@@ -39,6 +48,7 @@ const TabRoute = ({ tab, children }) => {
 export default function App() {
   return (
     <BrowserRouter>
+      <BrandApplier />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>

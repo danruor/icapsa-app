@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2 } from 'lucide-react'
 import api from '../lib/api'
 import { useAuthStore } from '../lib/authStore'
+import { applyBrand, brandForEmail } from '../lib/brand'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -11,6 +11,10 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const { setAuth } = useAuthStore()
   const navigate = useNavigate()
+
+  // El portal cambia de marca en vivo según el dominio del correo
+  const brand = brandForEmail(email)
+  useEffect(() => { applyBrand(brand) }, [brand.key])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -31,10 +35,10 @@ export default function Login() {
     <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 bg-brand-500 rounded-xl flex items-center justify-center mb-4">
-            <Building2 size={24} className="text-white" />
+          <div className="bg-white rounded-2xl px-6 py-4 mb-4 w-full flex items-center justify-center transition-all">
+            <img key={brand.key} src={brand.logo} alt={brand.name} className="h-12 max-w-full object-contain" />
           </div>
-          <h1 className="text-2xl font-semibold text-white">ICAPSA</h1>
+          <h1 className="text-xl font-semibold text-white tracking-wide">{brand.name}</h1>
           <p className="text-gray-400 text-sm mt-1">Sistema de Gestión</p>
         </div>
 
@@ -50,7 +54,7 @@ export default function Login() {
             <input
               type="email" value={email} onChange={e => setEmail(e.target.value)}
               className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:border-brand-500"
-              placeholder="usuario@icapsa.net"
+              placeholder="correo@empresa.com"
               required
             />
           </div>
@@ -72,6 +76,10 @@ export default function Login() {
             {loading ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>
+
+        <p className="text-center text-gray-600 text-[11px] mt-6">
+          ICAPSA · GREEDY · DELEVSIS
+        </p>
       </div>
     </div>
   )

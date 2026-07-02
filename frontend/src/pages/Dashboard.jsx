@@ -3,15 +3,18 @@ import { useQuery } from '@tanstack/react-query'
 import { FolderKanban, CheckSquare, Clock, AlertCircle, FileBarChart, Download } from 'lucide-react'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import api, { downloadFile } from '../lib/api'
+import { brandForEmail } from '../lib/brand'
 import { useAuthStore } from '../lib/authStore'
 
 const statusLabel = { TODO: 'Por hacer', IN_PROGRESS: 'En progreso', REVIEW: 'En revisión', DONE: 'Completadas' }
 const statusColor = { TODO: 'bg-gray-100 text-gray-600', IN_PROGRESS: 'bg-blue-100 text-blue-700', REVIEW: 'bg-yellow-100 text-yellow-700', DONE: 'bg-green-100 text-green-700' }
-const statusHex = { TODO: '#9CA3AF', IN_PROGRESS: '#378ADD', REVIEW: '#EF9F27', DONE: '#1D9E75' }
+// El color de 'Completado' toma el color de la marca activa
+const statusHex = (brandHex) => ({ TODO: '#9CA3AF', IN_PROGRESS: '#378ADD', REVIEW: '#EF9F27', DONE: brandHex })
 const priorityColor = { LOW: 'text-gray-400', MEDIUM: 'text-blue-500', HIGH: 'text-orange-500', URGENT: 'text-red-500' }
 
 export default function Dashboard() {
   const user = useAuthStore(s => s.user)
+  const chartColors = statusHex(brandForEmail(user?.email).hex500)
   const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7))
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
@@ -35,7 +38,7 @@ export default function Dashboard() {
   }))
 
   const barData = (data?.tasksByStatus || []).map(s => ({
-    name: statusLabel[s.status], tareas: s._count, fill: statusHex[s.status]
+    name: statusLabel[s.status], tareas: s._count, fill: chartColors[s.status]
   }))
 
   const totalTasks = pieData.reduce((sum, d) => sum + d.value, 0)
@@ -75,7 +78,7 @@ export default function Dashboard() {
                 <PieChart>
                   <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%"
                     innerRadius={55} outerRadius={85} paddingAngle={2}>
-                    {pieData.map((entry, i) => <Cell key={i} fill={statusHex[entry.status]} />)}
+                    {pieData.map((entry, i) => <Cell key={i} fill={chartColors[entry.status]} />)}
                   </Pie>
                   <Tooltip />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />

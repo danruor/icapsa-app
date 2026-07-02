@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Building2, Menu, X, MessagesSquare } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Menu, X, MessagesSquare } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../lib/authStore'
+import { brandForEmail } from '../lib/brand'
 import api from '../lib/api'
 import NotificationBell from './NotificationBell'
 import GlobalSearch from './GlobalSearch'
@@ -26,6 +27,7 @@ const superAdminNav = [
 
 export default function Layout() {
   const { user, logout, updateUser } = useAuthStore()
+  const brand = brandForEmail(user?.email)
   const navigate = useNavigate()
 
   // Mensajes de chat sin leer (badge del menú)
@@ -64,9 +66,10 @@ export default function Layout() {
 
   const SidebarContent = () => (
     <>
-      <div className="px-6 py-5 flex items-center gap-2 border-b border-gray-700">
-        <Building2 size={20} className="text-brand-500" />
-        <span className="text-white font-semibold tracking-wide">ICAPSA</span>
+      <div className="px-4 py-4 border-b border-gray-700">
+        <div className="bg-white rounded-lg px-3 py-2.5 flex items-center justify-center">
+          <img src={brand.logo} alt={brand.name} className="h-9 max-w-full object-contain" />
+        </div>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
@@ -131,9 +134,10 @@ export default function Layout() {
           <button onClick={() => setMobileOpen(true)} className="text-white">
             <Menu size={22} />
           </button>
-          <div className="flex items-center gap-2 flex-1">
-            <Building2 size={18} className="text-brand-500" />
-            <span className="text-white font-semibold text-sm">ICAPSA</span>
+          <div className="flex items-center flex-1 min-w-0">
+            <div className="bg-white rounded-md px-2 py-1 flex items-center">
+              <img src={brand.logo} alt={brand.name} className="h-5 object-contain" />
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <GlobalSearch dark />

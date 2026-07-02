@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Colores de marca por defecto (ICAPSA). Se sobreescriben en vivo según el dominio del correo. */
+:root {
+  --brand-50: 240 248 253;
+  --brand-100: 220 240 250;
+  --brand-200: 180 223 244;
+  --brand-400: 69 177 227;
+  --brand-500: 34 162 222;
+  --brand-600: 29 138 189;
+  --brand-700: 24 113 155;
+  --brand-900: 14 68 93;
+}
+
 @layer base {
   html, body {
     @apply bg-gray-50 text-gray-900 antialiased;
