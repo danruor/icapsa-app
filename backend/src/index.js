@@ -17,6 +17,7 @@ import quotesRoutes from './routes/quotes.js'
 import purchaseOrderRoutes from './routes/purchase-orders.js'
 import deliveryRoutes from './routes/deliveries.js'
 import searchRoutes from './routes/search.js'
+import chatRoutes from './routes/chat.js'
 
 dotenv.config()
 
@@ -50,10 +51,10 @@ app.use(cors({
 // Límite de tamaño del body (las fotos van por multipart, no JSON)
 app.use(express.json({ limit: '2mb' }))
 
-// Rate limit global: 400 peticiones por IP cada 15 min (generoso para uso normal)
+// Rate limit global: 1000 peticiones por IP cada 15 min (con margen para el chat en tiempo real)
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 400,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.' }
@@ -84,6 +85,7 @@ app.use('/api/quotes',    quotesRoutes)
 app.use('/api/purchase-orders', purchaseOrderRoutes)
 app.use('/api/deliveries', deliveryRoutes)
 app.use('/api/search',    searchRoutes)
+app.use('/api/chat',      chatRoutes)
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 

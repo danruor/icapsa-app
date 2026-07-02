@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Building2, Menu, X } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Building2, Menu, X, MessagesSquare } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../lib/authStore'
 import api from '../lib/api'
 import NotificationBell from './NotificationBell'
@@ -9,6 +10,7 @@ import clsx from 'clsx'
 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', key: 'dashboard' },
+  { to: '/chat',      icon: MessagesSquare,  label: 'Chat',       key: 'chat' },
   { to: '/projects',  icon: FolderKanban,    label: 'Proyectos',  key: 'projects' },
   { to: '/inventory', icon: Package,         label: 'Inventario', key: 'inventory' },
   { to: '/calendar',  icon: Calendar,        label: 'Calendario', key: 'calendar' }
@@ -25,6 +27,13 @@ const superAdminNav = [
 export default function Layout() {
   const { user, logout, updateUser } = useAuthStore()
   const navigate = useNavigate()
+
+  // Mensajes de chat sin leer (badge del menú)
+  const { data: chatUnread } = useQuery({
+    queryKey: ['chat-unread'],
+    queryFn: () => api.get('/chat/unread').then(r => r.data.unread),
+    refetchInterval: 20000
+  })
 
   // Refrescar datos del usuario (incluye pestañas permitidas) al cargar
   useEffect(() => {
@@ -46,7 +55,7 @@ export default function Layout() {
     baseNav = [...nav]
   } else {
     const allowed = (user?.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean)
-    baseNav = nav.filter(item => item.key === 'dashboard' || allowed.includes(item.key))
+    baseNav = nav.filter(item => item.key === 'dashboard' || item.key === 'chat' || allowed.includes(item.key))
   }
 
   let navItems = [...baseNav]
@@ -61,7 +70,7 @@ export default function Layout() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(({ to, icon: Icon, label }) => (
+        {navItems.map(({ to, icon: Icon, label, key }) => (
           <NavLink
             key={to} to={to}
             onClick={() => setMobileOpen(false)}
@@ -72,6 +81,11 @@ export default function Layout() {
           >
             <Icon size={18} />
             {label}
+            {key === 'chat' && chatUnread > 0 && (
+              <span className="ml-auto bg-red-500 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">
+                {chatUnread > 99 ? '99+' : chatUnread}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

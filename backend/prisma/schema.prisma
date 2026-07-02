@@ -31,6 +31,9 @@ model User {
   quotes        Quote[]
   purchaseOrders PurchaseOrder[]
   deliveries    Delivery[]
+  chatParticipations ConversationParticipant[]
+  chatMessages  ChatMessage[]
+  conversationsCreated Conversation[] @relation("ConvCreator")
 }
 
 enum Role {
@@ -330,4 +333,47 @@ model Delivery {
   quoteId     String?
   quote       Quote?   @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   movements   InventoryMovement[]
+}
+
+model Conversation {
+  id          String   @id @default(cuid())
+  type        String   @default("DIRECT") // DIRECT | GROUP
+  name        String?  // solo grupos
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) // ultima actividad (se toca con cada mensaje)
+
+  createdById String?
+  createdBy   User?    @relation("ConvCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  participants ConversationParticipant[]
+  messages     ChatMessage[]
+}
+
+model ConversationParticipant {
+  id             String   @id @default(cuid())
+  isAdmin        Boolean  @default(false) // administrador del grupo
+  lastReadAt     DateTime @default(now())
+  joinedAt       DateTime @default(now())
+
+  conversationId String
+  userId         String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+}
+
+model ChatMessage {
+  id             String    @id @default(cuid())
+  content        String
+  type           String    @default("TEXT") // TEXT | SYSTEM
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+
+  conversationId String
+  senderId       String?
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
 }

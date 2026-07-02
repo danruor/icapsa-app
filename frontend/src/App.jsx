@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './lib/authStore'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Chat from './pages/Chat'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import Inventory from './pages/Inventory'
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="chat" element={<Chat />} />
           <Route path="projects" element={<TabRoute tab="projects"><Projects /></TabRoute>} />
           <Route path="projects/:id" element={<TabRoute tab="projects"><ProjectDetail /></TabRoute>} />
           <Route path="inventory" element={<TabRoute tab="inventory"><Inventory /></TabRoute>} />
