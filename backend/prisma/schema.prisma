@@ -352,6 +352,8 @@ model Conversation {
 model ConversationParticipant {
   id             String   @id @default(cuid())
   isAdmin        Boolean  @default(false) // administrador del grupo
+  hidden         Boolean  @default(false) // chat "eliminado" de mi lista (reaparece con mensajes nuevos)
+  clearedAt      DateTime? // corte de historial: solo veo mensajes posteriores
   lastReadAt     DateTime @default(now())
   joinedAt       DateTime @default(now())
 

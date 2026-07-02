@@ -165,6 +165,12 @@ function ChatWindow({ conversation, onBack, onLeft }) {
     onError: (e) => alert(e.response?.data?.error || 'Error')
   })
 
+  const deleteConv = useMutation({
+    mutationFn: () => api.delete(`/chat/conversations/${conversation.id}`),
+    onSuccess: onLeft,
+    onError: (e) => alert(e.response?.data?.error || 'Error al eliminar')
+  })
+
   const removeMember = useMutation({
     mutationFn: (userId) => api.delete(`/chat/conversations/${conversation.id}/participants/${userId}`),
     onSuccess: (_, userId) => {
@@ -229,35 +235,54 @@ function ChatWindow({ conversation, onBack, onLeft }) {
           <p className="text-sm font-semibold text-gray-900 truncate">{conversation.name}</p>
           <p className="text-xs text-gray-400 truncate">{conversation.subtitle}{isGroup ? ' · toca para ver' : ''}</p>
         </div>
-        {isGroup && (
-          <div className="relative">
-            <button onClick={() => setMenuOpen(v => !v)} className="text-gray-400 hover:text-gray-600 p-1"><MoreVertical size={18} /></button>
-            {menuOpen && (
-              <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg z-20 w-52 py-1">
-                <button onClick={() => { setShowMembers(true); setMenuOpen(false) }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                  <Users size={14} /> Ver integrantes
-                </button>
-                {conversation.myIsAdmin && (
-                  <>
-                    <button onClick={() => { setShowAdd(true); setMenuOpen(false) }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                      <UserPlus size={14} /> Agregar integrantes
+        <div className="relative">
+          <button onClick={() => setMenuOpen(v => !v)} className="text-gray-400 hover:text-gray-600 p-1"><MoreVertical size={18} /></button>
+          {menuOpen && (
+            <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg z-20 w-56 py-1">
+              {isGroup ? (
+                <>
+                  <button onClick={() => { setShowMembers(true); setMenuOpen(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <Users size={14} /> Ver integrantes
+                  </button>
+                  {conversation.myIsAdmin && (
+                    <>
+                      <button onClick={() => { setShowAdd(true); setMenuOpen(false) }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        <UserPlus size={14} /> Agregar integrantes
+                      </button>
+                      <button onClick={doRename}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        <Pencil size={14} /> Renombrar grupo
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => { setMenuOpen(false); if (confirm('¿Salir de este grupo?')) removeMember.mutate(me.id) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+                    <LogOut size={14} /> Salir del grupo
+                  </button>
+                  {(conversation.myIsAdmin || me?.role === 'SUPER_ADMIN') && (
+                    <button onClick={() => {
+                      setMenuOpen(false)
+                      if (confirm(`¿Eliminar el grupo «${conversation.name}» PARA TODOS?\n\nSe borrarán todos los mensajes de los ${conversation.participants.length} integrantes. Esta acción no se puede deshacer.`)) deleteConv.mutate()
+                    }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 border-t border-gray-100">
+                      <Trash2 size={14} /> Eliminar grupo (todos)
                     </button>
-                    <button onClick={doRename}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                      <Pencil size={14} /> Renombrar grupo
-                    </button>
-                  </>
-                )}
-                <button onClick={() => { setMenuOpen(false); if (confirm('¿Salir de este grupo?')) removeMember.mutate(me.id) }}
+                  )}
+                </>
+              ) : (
+                <button onClick={() => {
+                  setMenuOpen(false)
+                  if (confirm(`¿Eliminar este chat de tu lista?\n\nTu historial se borrará solo para ti; ${conversation.name} conserva el suyo. Si te vuelve a escribir, el chat reaparecerá.`)) deleteConv.mutate()
+                }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
-                  <LogOut size={14} /> Salir del grupo
+                  <Trash2 size={14} /> Eliminar chat
                 </button>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Integrantes (grupos) */}

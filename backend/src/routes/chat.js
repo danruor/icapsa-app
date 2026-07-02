@@ -71,7 +71,7 @@ router.get('/unread', async (req, res) => {
 router.get('/conversations', async (req, res) => {
   try {
     const parts = await prisma.conversationParticipant.findMany({
-      where: { userId: req.user.id },
+      where: { userId: req.user.id, hidden: false },
       include: {
         conversation: {
           include: {
@@ -163,7 +163,13 @@ router.post('/conversations', async (req, res) => {
           ]
         }
       })
-      if (existing) return res.json({ id: existing.id, existed: true })
+      if (existing) {
+        await prisma.conversationParticipant.updateMany({
+          where: { conversationId: existing.id, userId: req.user.id, hidden: true },
+          data: { hidden: false }
+        })
+        return res.json({ id: existing.id, existed: true })
+      }
 
       const conv = await prisma.conversation.create({
         data: {
@@ -215,7 +221,10 @@ router.get('/conversations/:id/messages', async (req, res) => {
     if (!part) return res.status(403).json({ error: 'No participas en esta conversación' })
 
     const messages = await prisma.chatMessage.findMany({
-      where: { conversationId: req.params.id },
+      where: {
+        conversationId: req.params.id,
+        ...(part.clearedAt && { createdAt: { gt: part.clearedAt } })
+      },
       include: { sender: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
       take: 80
@@ -261,6 +270,11 @@ router.post('/conversations/:id/messages', async (req, res) => {
     await prisma.conversation.update({
       where: { id: req.params.id },
       data: { updatedAt: new Date() }
+    })
+    // Si alguien tenía el chat "eliminado" de su lista, reaparece con el mensaje nuevo
+    await prisma.conversationParticipant.updateMany({
+      where: { conversationId: req.params.id, hidden: true },
+      data: { hidden: false }
     })
     // El remitente ya leyó hasta su propio mensaje
     await prisma.conversationParticipant.update({
@@ -388,6 +402,41 @@ router.delete('/conversations/:id/participants/:userId', async (req, res) => {
   } catch (err) {
     console.error('Error quitar integrante:', err.message)
     res.status(500).json({ error: 'Error al procesar' })
+  }
+})
+
+// DELETE /api/chat/conversations/:id — eliminar chat
+// DIRECT: lo quita de TU lista y corta TU historial (la otra persona conserva el suyo)
+// GROUP: lo elimina PARA TODOS (solo admin del grupo o super admin), queda en auditoría
+router.delete('/conversations/:id', async (req, res) => {
+  try {
+    const part = await myPart(req.params.id, req.user.id)
+    if (!part) return res.status(403).json({ error: 'No participas en esta conversación' })
+    const conv = await prisma.conversation.findUnique({ where: { id: req.params.id } })
+    if (!conv) return res.status(404).json({ error: 'Conversación no encontrada' })
+
+    if (conv.type === 'DIRECT') {
+      await prisma.conversationParticipant.update({
+        where: { id: part.id },
+        data: { hidden: true, clearedAt: new Date(), lastReadAt: new Date() }
+      })
+      return res.json({ message: 'Chat eliminado de tu lista' })
+    }
+
+    // GROUP: destructivo para todos
+    if (!part.isAdmin && req.user.role !== 'SUPER_ADMIN')
+      return res.status(403).json({ error: 'Solo el administrador puede eliminar el grupo. Puedes salirte desde el menú.' })
+
+    const count = await prisma.conversationParticipant.count({ where: { conversationId: conv.id } })
+    await prisma.conversation.delete({ where: { id: conv.id } })
+    await logActivity({
+      userId: req.user.id, action: 'chat_group_deleted',
+      detail: `eliminó el grupo de chat «${conv.name}» (${count} integrantes)`
+    })
+    res.json({ message: 'Grupo eliminado para todos los integrantes' })
+  } catch (err) {
+    console.error('Error eliminar conversación:', err.message)
+    res.status(500).json({ error: 'Error al eliminar' })
   }
 })
 
