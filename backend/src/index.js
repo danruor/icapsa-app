@@ -18,6 +18,7 @@ import purchaseOrderRoutes from './routes/purchase-orders.js'
 import deliveryRoutes from './routes/deliveries.js'
 import searchRoutes from './routes/search.js'
 import chatRoutes from './routes/chat.js'
+import boardRoutes from './routes/board.js'
 
 dotenv.config()
 
@@ -86,6 +87,7 @@ app.use('/api/purchase-orders', purchaseOrderRoutes)
 app.use('/api/deliveries', deliveryRoutes)
 app.use('/api/search',    searchRoutes)
 app.use('/api/chat',      chatRoutes)
+app.use('/api/board',     boardRoutes)
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 

@@ -5,6 +5,7 @@ import { applyBrand, brandForEmail } from './lib/brand'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Chat from './pages/Chat'
+import Board from './pages/Board'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import Inventory from './pages/Inventory'
@@ -55,6 +56,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="chat" element={<Chat />} />
+          <Route path="board" element={<Board />} />
           <Route path="projects" element={<TabRoute tab="projects"><Projects /></TabRoute>} />
           <Route path="projects/:id" element={<TabRoute tab="projects"><ProjectDetail /></TabRoute>} />
           <Route path="inventory" element={<TabRoute tab="inventory"><Inventory /></TabRoute>} />

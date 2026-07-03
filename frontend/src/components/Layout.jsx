@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Menu, X, MessagesSquare } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Menu, X, MessagesSquare, KanbanSquare } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../lib/authStore'
 import { brandForEmail } from '../lib/brand'
@@ -12,6 +12,7 @@ import clsx from 'clsx'
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', key: 'dashboard' },
   { to: '/chat',      icon: MessagesSquare,  label: 'Chat',       key: 'chat' },
+  { to: '/board',     icon: KanbanSquare,    label: 'Pendientes', key: 'board' },
   { to: '/projects',  icon: FolderKanban,    label: 'Proyectos',  key: 'projects' },
   { to: '/inventory', icon: Package,         label: 'Inventario', key: 'inventory' },
   { to: '/calendar',  icon: Calendar,        label: 'Calendario', key: 'calendar' }
@@ -57,7 +58,7 @@ export default function Layout() {
     baseNav = [...nav]
   } else {
     const allowed = (user?.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean)
-    baseNav = nav.filter(item => item.key === 'dashboard' || item.key === 'chat' || allowed.includes(item.key))
+    baseNav = nav.filter(item => ['dashboard', 'chat', 'board'].includes(item.key) || allowed.includes(item.key))
   }
 
   let navItems = [...baseNav]
