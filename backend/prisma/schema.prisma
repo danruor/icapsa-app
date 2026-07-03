@@ -28,6 +28,7 @@ model User {
   movements     InventoryMovement[]
   notifications Notification[]
   pushTokens    PushToken[]
+  notes         Note[]
   activities    Activity[]
   quotes        Quote[]
   purchaseOrders PurchaseOrder[]
@@ -72,6 +73,7 @@ model Project {
   purchaseOrders PurchaseOrder[]
   deliveries Delivery[]
   boardCards BoardCard[]
+  notes       Note[]  @relation("NoteProjects")
 }
 
 enum ProjectStatus {
@@ -273,6 +275,7 @@ model Quote {
   project     Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
   deliveries  Delivery[]
   boardCards  BoardCard[]
+  notes       Note[]  @relation("NoteQuotes")
 }
 
 enum QuoteStatus {
@@ -436,4 +439,23 @@ model PushToken {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// Notas personales privadas (texto + dibujo de Apple Pencil como trazos vectoriales)
+model Note {
+  id        String   @id @default(cuid())
+  title     String
+  content   String?
+  drawing   String?  // JSON de trazos {color,width,d} para render como SVG
+  color     String   @default("#FDE68A")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  projects Project[] @relation("NoteProjects")
+  quotes   Quote[]   @relation("NoteQuotes")
+
+  @@index([userId, updatedAt])
 }
