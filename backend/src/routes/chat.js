@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticate, requireTab } from '../middleware/auth.js'
 import { logActivity } from '../lib/events.js'
+import { sendPushToUsers } from '../lib/push.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -282,6 +283,23 @@ router.post('/conversations/:id/messages', async (req, res) => {
       where: { id: part.id },
       data: { lastReadAt: new Date() }
     })
+
+    // Push a los demás participantes, como un mensaje normal del teléfono
+    try {
+      const conv = await prisma.conversation.findUnique({
+        where: { id: req.params.id },
+        include: { participants: { select: { userId: true } } }
+      })
+      const others = conv.participants.map(p => p.userId).filter(uid => uid !== req.user.id)
+      const title = conv.type === 'GROUP' ? `${conv.name || 'Grupo'} · ${msg.sender.name}` : msg.sender.name
+      await sendPushToUsers(others, {
+        title,
+        body: content.slice(0, 150),
+        data: { link: '/chat', conversationId: conv.id, type: 'chat_message' }
+      })
+    } catch (err) {
+      console.error('Push de chat:', err.message)
+    }
 
     res.status(201).json({
       id: msg.id, content: msg.content, deleted: false, type: msg.type,

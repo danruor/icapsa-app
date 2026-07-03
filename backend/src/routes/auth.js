@@ -56,6 +56,9 @@ router.post('/login', async (req, res) => {
     if (!valid)
       return res.status(401).json({ error: 'Credenciales incorrectas' })
 
+    if (!user.isActive)
+      return res.status(401).json({ error: 'Tu cuenta está desactivada. Contacta a tu administrador.' })
+
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,

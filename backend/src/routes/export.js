@@ -9,6 +9,13 @@ const prisma = new PrismaClient()
 
 router.use(authenticate)
 
+// Los exports de cotizaciones son información comercial: solo super administrador
+const requireSuperAdmin = (req, res, next) => {
+  if (req.user.role !== 'SUPER_ADMIN')
+    return res.status(403).json({ error: 'Solo el super administrador puede exportar cotizaciones' })
+  next()
+}
+
 const statusNames = { TODO: 'Por hacer', IN_PROGRESS: 'En progreso', REVIEW: 'En revisión', DONE: 'Completado' }
 const priorityNames = { LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', URGENT: 'Urgente' }
 
@@ -148,7 +155,7 @@ router.get('/project/:id.pdf', requireTab('projects'), async (req, res) => {
 
 
 // GET /api/export/quote/:id.pdf - cotización en PDF
-router.get('/quote/:id.pdf', async (req, res) => {
+router.get('/quote/:id.pdf', requireSuperAdmin, async (req, res) => {
   try {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: 'Sin permisos' })
 
@@ -234,7 +241,7 @@ router.get('/quote/:id.pdf', async (req, res) => {
 
 
 // GET /api/export/quotes.xlsx - lista de todas las cotizaciones con estado de pago
-router.get('/quotes.xlsx', async (req, res) => {
+router.get('/quotes.xlsx', requireSuperAdmin, async (req, res) => {
   try {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: 'Sin permisos' })
 
@@ -307,7 +314,7 @@ router.get('/quotes.xlsx', async (req, res) => {
 })
 
 // GET /api/export/quote/:id.xlsx - una cotización individual en Excel
-router.get('/quote/:id.xlsx', async (req, res) => {
+router.get('/quote/:id.xlsx', requireSuperAdmin, async (req, res) => {
   try {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: 'Sin permisos' })
 

@@ -132,6 +132,17 @@ router.patch('/:id', async (req, res) => {
 // DELETE /api/tasks/:id
 router.delete('/:id', async (req, res) => {
   try {
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+      select: { creatorId: true, assigneeId: true, title: true }
+    })
+    if (!task) return res.status(404).json({ error: 'Tarea no encontrada' })
+
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)
+    const involved = task.creatorId === req.user.id || task.assigneeId === req.user.id
+    if (!isAdmin && !involved)
+      return res.status(403).json({ error: 'Solo el creador, el responsable o un administrador pueden eliminar la tarea' })
+
     await prisma.task.delete({ where: { id: req.params.id } })
     res.json({ message: 'Tarea eliminada' })
   } catch {

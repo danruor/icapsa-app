@@ -63,6 +63,23 @@ router.post('/', async (req, res) => {
       },
       include: { members: true }
     })
+
+    // Avisar a los administradores (excepto quien lo creó)
+    try {
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ['SUPER_ADMIN', 'ADMIN'] }, isActive: true, id: { not: req.user.id } },
+        select: { id: true }
+      })
+      const creator = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true } })
+      await sendPushToUsers(admins.map(a => a.id), {
+        title: 'Nuevo proyecto',
+        body: `${creator?.name || 'Alguien'} creó "${project.name}"`,
+        data: { link: `/projects/${project.id}`, type: 'project_created' }
+      })
+    } catch (err) {
+      console.error('Push proyecto nuevo:', err.message)
+    }
+
     res.status(201).json(project)
   } catch (err) {
     console.error('Error crear proyecto:', err.message)
@@ -93,7 +110,7 @@ router.get('/:id', async (req, res) => {
 })
 
 // PATCH /api/projects/:id
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireAdmin, async (req, res) => {
   try {
     const { name, description, status, startDate, endDate, color, address, latitude, longitude, budget, client } = req.body
     const project = await prisma.project.update({
@@ -120,7 +137,7 @@ router.patch('/:id', async (req, res) => {
 })
 
 // DELETE /api/projects/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     const project = await prisma.project.update({
       where: { id: req.params.id },
@@ -150,14 +167,27 @@ router.get('/:id/members', async (req, res) => {
   }
 })
 
-// POST /api/projects/:id/members - agregar miembro
-router.post('/:id/members', async (req, res) => {
+// POST /api/projects/:id/members - agregar miembro (solo administradores)
+router.post('/:id/members', requireAdmin, async (req, res) => {
   try {
     const { userId, role } = req.body
     const member = await prisma.projectMember.create({
       data: { projectId: req.params.id, userId, role: role || 'MEMBER' },
       include: { user: { select: { id: true, name: true, email: true } } }
     })
+    // Aviso in-app + push al nuevo miembro
+    try {
+      const project = await prisma.project.findUnique({ where: { id: req.params.id }, select: { name: true } })
+      await notify({
+        userId,
+        type: 'project_member',
+        title: 'Te agregaron a un proyecto',
+        message: `Ahora eres parte de "${project?.name || 'un proyecto'}"`,
+        link: `/projects/${req.params.id}`
+      })
+    } catch (err) {
+      console.error('Aviso de miembro:', err.message)
+    }
     res.status(201).json(member)
   } catch (err) {
     if (err.code === 'P2002') return res.status(409).json({ error: 'El usuario ya es miembro' })
@@ -166,7 +196,7 @@ router.post('/:id/members', async (req, res) => {
 })
 
 // DELETE /api/projects/:id/members/:userId - quitar miembro
-router.delete('/:id/members/:userId', async (req, res) => {
+router.delete('/:id/members/:userId', requireAdmin, async (req, res) => {
   try {
     await prisma.projectMember.deleteMany({
       where: { projectId: req.params.id, userId: req.params.userId }

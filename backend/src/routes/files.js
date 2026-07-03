@@ -97,6 +97,11 @@ router.delete('/:id', async (req, res) => {
     const file = await prisma.file.findUnique({ where: { id: req.params.id } })
     if (!file) return res.status(404).json({ error: 'Archivo no encontrado' })
 
+    // Solo quien lo subió o un administrador puede eliminarlo
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)
+    if (file.uploadedById !== req.user.id && !isAdmin)
+      return res.status(403).json({ error: 'Solo quien subió el archivo (o un administrador) puede eliminarlo' })
+
     const filename = file.url.split('/uploads/')[1]
     const filePath = `${UPLOAD_DIR}/${filename}`
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)

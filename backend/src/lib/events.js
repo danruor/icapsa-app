@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { sendPushToUsers } from './push.js'
 const prisma = new PrismaClient()
 
 // Crear una notificación para un usuario
@@ -8,6 +9,8 @@ export async function notify({ userId, type, title, message, link }) {
     await prisma.notification.create({
       data: { userId, type, title, message, link }
     })
+    // Además de la campana in-app, llega al teléfono como notificación del sistema
+    await sendPushToUsers([userId], { title, body: message, data: { link: link || null, type } })
   } catch (err) {
     console.error('Error creando notificación:', err.message)
   }
@@ -44,6 +47,11 @@ export async function notifyLowStock(item) {
             message: `El artículo "${item.name}" quedó en ${item.quantity} ${item.unit} (mínimo: ${item.minStock})`,
             link: '/inventory'
           }
+        })
+        await sendPushToUsers([a.id], {
+          title: 'Stock bajo',
+          body: `"${item.name}" quedó en ${item.quantity} ${item.unit} (mínimo: ${item.minStock})`,
+          data: { link: '/inventory', type: 'stock_low' }
         })
       }
     }

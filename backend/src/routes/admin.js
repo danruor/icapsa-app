@@ -2,7 +2,7 @@ import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import { PrismaClient } from '@prisma/client'
 import { authenticate, requireAdmin } from '../middleware/auth.js'
-import { logActivity } from '../lib/events.js'
+import { logActivity, notify } from '../lib/events.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -141,6 +141,11 @@ router.put('/users/:id/projects', async (req, res) => {
     const { projectIds } = req.body  // array de IDs
     const userId = req.params.id
 
+    // Detectar proyectos realmente nuevos para avisar solo por esos
+    const before = await prisma.projectMember.findMany({ where: { userId }, select: { projectId: true } })
+    const beforeSet = new Set(before.map(m => m.projectId))
+    const added = (projectIds || []).filter(pid => !beforeSet.has(pid))
+
     // Borrar asignaciones actuales y recrear
     await prisma.projectMember.deleteMany({ where: { userId } })
 
@@ -149,6 +154,22 @@ router.put('/users/:id/projects', async (req, res) => {
         data: projectIds.map(pid => ({ userId, projectId: pid, role: 'MEMBER' })),
         skipDuplicates: true
       })
+    }
+
+    // Aviso in-app + push por cada proyecto nuevo asignado
+    for (const pid of added) {
+      try {
+        const proj = await prisma.project.findUnique({ where: { id: pid }, select: { name: true } })
+        await notify({
+          userId,
+          type: 'project_member',
+          title: 'Te agregaron a un proyecto',
+          message: `Ahora eres parte de "${proj?.name || 'un proyecto'}"`,
+          link: `/projects/${pid}`
+        })
+      } catch (err) {
+        console.error('Aviso de asignación:', err.message)
+      }
     }
 
     const updated = await prisma.user.findUnique({

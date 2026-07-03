@@ -27,6 +27,7 @@ model User {
   comments      Comment[]
   movements     InventoryMovement[]
   notifications Notification[]
+  pushTokens    PushToken[]
   activities    Activity[]
   quotes        Quote[]
   purchaseOrders PurchaseOrder[]
@@ -421,4 +422,18 @@ model BoardCard {
   purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
 
   @@index([columnId, position])
+}
+
+// Tokens de notificaciones push (Expo) por dispositivo
+model PushToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  platform  String   @default("ios")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

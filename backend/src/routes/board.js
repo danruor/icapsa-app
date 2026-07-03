@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { authenticate, requireTab } from '../middleware/auth.js'
+import { notify } from '../lib/events.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -21,14 +22,13 @@ async function notifyAssignment(card, byUserId) {
   try {
     if (!card.assigneeId || card.assigneeId === byUserId) return
     const by = await prisma.user.findUnique({ where: { id: byUserId }, select: { name: true } })
-    await prisma.notification.create({
-      data: {
-        userId: card.assigneeId,
-        type: 'board_assigned',
-        title: 'Nuevo pendiente asignado',
-        message: `${by?.name || 'Alguien'} te asignó: «${card.title}»`,
-        link: '/board'
-      }
+    // notify() central: campana in-app + push al teléfono
+    await notify({
+      userId: card.assigneeId,
+      type: 'board_assigned',
+      title: 'Nuevo pendiente asignado',
+      message: `${by?.name || 'Alguien'} te asignó: «${card.title}»`,
+      link: '/board'
     })
   } catch (err) {
     console.error('Error notificar asignación:', err.message)
