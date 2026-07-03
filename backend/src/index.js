@@ -103,3 +103,22 @@ app.use((err, req, res, _next) => {
 })
 
 app.listen(PORT, () => console.log(`API corriendo en puerto ${PORT}`))
+
+// Backfill idempotente: chat y pendientes ahora son configurables por usuario;
+// los usuarios existentes los conservan activados (el admin puede quitarlos después).
+import('@prisma/client').then(async ({ PrismaClient }) => {
+  const p = new PrismaClient()
+  try {
+    const users = await p.user.findMany({ select: { id: true, visibleTabs: true } })
+    for (const u of users) {
+      const tabs = (u.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean)
+      let changed = false
+      for (const t of ['chat', 'board']) if (!tabs.includes(t)) { tabs.push(t); changed = true }
+      if (changed) await p.user.update({ where: { id: u.id }, data: { visibleTabs: tabs.join(',') } })
+    }
+  } catch (err) {
+    console.error('Backfill de pestañas:', err.message)
+  } finally {
+    await p.$disconnect()
+  }
+})

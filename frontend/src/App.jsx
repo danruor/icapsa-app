@@ -55,8 +55,8 @@ export default function App() {
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
-          <Route path="chat" element={<Chat />} />
-          <Route path="board" element={<Board />} />
+          <Route path="chat" element={<TabRoute tab="chat"><Chat /></TabRoute>} />
+          <Route path="board" element={<TabRoute tab="board"><Board /></TabRoute>} />
           <Route path="projects" element={<TabRoute tab="projects"><Projects /></TabRoute>} />
           <Route path="projects/:id" element={<TabRoute tab="projects"><ProjectDetail /></TabRoute>} />
           <Route path="inventory" element={<TabRoute tab="inventory"><Inventory /></TabRoute>} />

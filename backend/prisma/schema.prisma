@@ -16,7 +16,7 @@ model User {
   isActive  Boolean  @default(true)
   phone     String?
   position  String?
-  visibleTabs String @default("projects,inventory,calendar")
+  visibleTabs String @default("projects,inventory,calendar,chat,board")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

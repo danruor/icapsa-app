@@ -31,11 +31,13 @@ export default function Layout() {
   const brand = brandForEmail(user?.email)
   const navigate = useNavigate()
 
-  // Mensajes de chat sin leer (badge del menú)
+  // Mensajes de chat sin leer (badge del menú) — solo si el usuario tiene la pestaña
+  const hasChat = ['SUPER_ADMIN', 'ADMIN'].includes(user?.role) || (user?.visibleTabs || '').split(',').map(t => t.trim()).includes('chat')
   const { data: chatUnread } = useQuery({
     queryKey: ['chat-unread'],
     queryFn: () => api.get('/chat/unread').then(r => r.data.unread),
-    refetchInterval: 20000
+    refetchInterval: 20000,
+    enabled: !!hasChat
   })
 
   // Refrescar datos del usuario (incluye pestañas permitidas) al cargar
@@ -58,7 +60,7 @@ export default function Layout() {
     baseNav = [...nav]
   } else {
     const allowed = (user?.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean)
-    baseNav = nav.filter(item => ['dashboard', 'chat', 'board'].includes(item.key) || allowed.includes(item.key))
+    baseNav = nav.filter(item => item.key === 'dashboard' || allowed.includes(item.key))
   }
 
   let navItems = [...baseNav]

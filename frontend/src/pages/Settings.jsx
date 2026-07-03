@@ -26,7 +26,7 @@ export default function Settings() {
 
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar'] })
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar', 'chat', 'board'] })
   const [projectModal, setProjectModal] = useState(null)
   const [adminTab, setAdminTab] = useState('users') // user being edited for projects
 
@@ -73,7 +73,7 @@ export default function Settings() {
 
   const openNew = () => {
     setEditing(null)
-    setForm({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar'] })
+    setForm({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar', 'chat', 'board'] })
     setShowForm(true)
   }
 
@@ -306,12 +306,14 @@ export default function Settings() {
                       <span>Dashboard <span className="text-xs">(siempre visible)</span></span>
                     </label>
                     {[
-                      { key: 'projects', label: 'Proyectos' },
-                      { key: 'inventory', label: 'Inventario' },
-                      { key: 'calendar', label: 'Calendario' }
+                      { key: 'chat', label: 'Chat', desc: 'mensajería interna: directos y grupos' },
+                      { key: 'board', label: 'Pendientes', desc: 'tablero Kanban del equipo' },
+                      { key: 'projects', label: 'Proyectos', desc: 'obras, tareas, fotos y avance' },
+                      { key: 'inventory', label: 'Inventario', desc: 'stock, entregas, órdenes de compra y kardex' },
+                      { key: 'calendar', label: 'Calendario', desc: 'fechas de proyectos y tareas' }
                     ].map(tab => (
-                      <label key={tab.key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:text-gray-900">
-                        <input type="checkbox"
+                      <label key={tab.key} className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:text-gray-900">
+                        <input type="checkbox" className="mt-0.5"
                           checked={form.visibleTabs.includes(tab.key)}
                           onChange={e => setForm(f => ({
                             ...f,
@@ -319,7 +321,7 @@ export default function Settings() {
                               ? [...f.visibleTabs, tab.key]
                               : f.visibleTabs.filter(t => t !== tab.key)
                           }))} />
-                        {tab.label}
+                        <span>{tab.label} <span className="text-xs text-gray-400">— {tab.desc}</span></span>
                       </label>
                     ))}
                   </div>

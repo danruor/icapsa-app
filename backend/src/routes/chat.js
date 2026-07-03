@@ -1,12 +1,13 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticate } from '../middleware/auth.js'
+import { authenticate, requireTab } from '../middleware/auth.js'
 import { logActivity } from '../lib/events.js'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 router.use(authenticate)
+router.use(requireTab('chat'))
 
 const MAX_MSG = 4000
 
