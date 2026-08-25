@@ -189,47 +189,74 @@ router.get('/quote/:id.pdf', requireSuperAdmin, async (req, res) => {
     if (quote.clientEmail) doc.fontSize(9).fillColor('#666').text(quote.clientEmail, 50, 162)
     if (quote.clientPhone) doc.fontSize(9).fillColor('#666').text(quote.clientPhone, 50, 175)
 
-    // Tabla de items
+    // Tabla de items — filas de altura DINÁMICA según el contenido
+    const BOTTOM = 730 // límite inferior útil de la página (LETTER 792pt - margen)
+    const money = (n) => `$${n.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
+
+    const drawTableHeader = (yy) => {
+      doc.rect(50, yy, 512, 22).fill('#1D9E75')
+      doc.fontSize(9).fillColor('#fff')
+      doc.text('Concepto', 58, yy + 7)
+      doc.text('Cant.', 320, yy + 7)
+      doc.text('P. Unit.', 380, yy + 7)
+      doc.text('Importe', 480, yy + 7, { width: 75, align: 'right' })
+      return yy + 22
+    }
+
     let y = 210
-    doc.rect(50, y, 512, 22).fill('#1D9E75')
-    doc.fontSize(9).fillColor('#fff')
-    doc.text('Concepto', 58, y + 7)
-    doc.text('Cant.', 320, y + 7)
-    doc.text('P. Unit.', 380, y + 7)
-    doc.text('Importe', 480, y + 7, { width: 75, align: 'right' })
-    y += 22
+    y = drawTableHeader(y)
 
     quote.items.forEach((it, idx) => {
       const importe = it.unitPrice * it.quantity - it.discount
-      if (idx % 2 === 0) doc.rect(50, y, 512, 20).fill('#f7f7f7')
+
+      // Medir cuánto ocupa realmente el concepto y calcular la altura de la fila
+      doc.fontSize(9)
+      const nameH = doc.heightOfString(it.name, { width: 255 })
+      const rowH = Math.max(20, nameH + 12) // 6pt de padding arriba y abajo
+
+      // Salto de página si la fila no cabe completa
+      if (y + rowH > BOTTOM) {
+        doc.addPage()
+        y = drawTableHeader(50)
+      }
+
+      if (idx % 2 === 0) doc.rect(50, y, 512, rowH).fill('#f7f7f7')
       doc.fontSize(9).fillColor('#111')
       doc.text(it.name, 58, y + 6, { width: 255 })
       doc.text(`${it.quantity} ${it.unit}`, 320, y + 6)
-      doc.text(`$${it.unitPrice.toLocaleString('es-MX', {minimumFractionDigits: 2})}`, 380, y + 6)
-      doc.text(`$${importe.toLocaleString('es-MX', {minimumFractionDigits: 2})}`, 480, y + 6, { width: 75, align: 'right' })
-      y += 20
+      doc.text(money(it.unitPrice), 380, y + 6)
+      doc.text(money(importe), 480, y + 6, { width: 75, align: 'right' })
+      y += rowH
     })
 
-    // Totales
+    // Totales (con salto de página si no caben)
+    if (y + 90 > BOTTOM) { doc.addPage(); y = 50 }
     y += 10
     doc.fontSize(10).fillColor('#666')
     doc.text('Subtotal:', 380, y, { width: 90, align: 'right' })
-    doc.text(`$${subtotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}`, 470, y, { width: 85, align: 'right' })
+    doc.text(money(subtotal), 470, y, { width: 85, align: 'right' })
     y += 18
     doc.text(`IVA (${quote.taxRate}%):`, 380, y, { width: 90, align: 'right' })
-    doc.text(`$${tax.toLocaleString('es-MX', {minimumFractionDigits: 2})}`, 470, y, { width: 85, align: 'right' })
+    doc.text(money(tax), 470, y, { width: 85, align: 'right' })
     y += 20
     doc.rect(380, y - 4, 182, 26).fill('#0F6E56')
     doc.fontSize(12).fillColor('#fff')
     doc.text('TOTAL:', 388, y + 3)
-    doc.text(`$${total.toLocaleString('es-MX', {minimumFractionDigits: 2})}`, 470, y + 3, { width: 85, align: 'right' })
+    doc.text(money(total), 470, y + 3, { width: 85, align: 'right' })
+    y += 40 // fin del bloque de total + respiro
 
-    // Notas y validez
+    // Notas y validez — flujo secuencial dinámico (nunca se encima)
     if (quote.notes) {
-      doc.fontSize(9).fillColor('#888').text('Notas: ' + quote.notes, 50, y + 50, { width: 300 })
+      doc.fontSize(9)
+      const notesText = 'Notas: ' + quote.notes
+      const notesH = doc.heightOfString(notesText, { width: 460 })
+      if (y + notesH > BOTTOM) { doc.addPage(); y = 50 }
+      doc.fillColor('#888').text(notesText, 50, y, { width: 460 })
+      y += notesH + 10
     }
     if (quote.validUntil) {
-      doc.fontSize(9).fillColor('#888').text(`Válida hasta: ${new Date(quote.validUntil).toLocaleDateString('es-MX')}`, 50, y + 70)
+      if (y + 14 > BOTTOM) { doc.addPage(); y = 50 }
+      doc.fontSize(9).fillColor('#888').text(`Válida hasta: ${new Date(quote.validUntil).toLocaleDateString('es-MX')}`, 50, y)
     }
 
     doc.end()
