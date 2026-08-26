@@ -40,6 +40,7 @@ model User {
   boardCardsAssigned BoardCard[] @relation("CardAssignee")
   partnerDeals    PartnerDeal[]
   partnerPayments PartnerPayment[]
+  partnerDataCharges PartnerDataCharge[]
 }
 
 enum Role {
@@ -476,8 +477,15 @@ model PartnerSettings {
 
 model PartnerDeal {
   id           String   @id @default(cuid())
-  name         String   // "Tarjetas Internas (DVMC)"
-  area         String?  // "CFE · Media Tensión"
+  name         String   // nombre del contrato u obra: "Torre Lítica"
+  area         String?  // legacy (se conserva por compatibilidad)
+  clientType   String   @default("PRIVATE") // CFE | PRIVATE
+  clientName   String?  // constructora/cliente (privados) — CFE se autollenа
+  division     String?  // división de distribución CFE (si aplica)
+  state        String?  // estado de la República (privados)
+  contractRef  String?  // No. de contrato o pedido
+  includesData Boolean  @default(false) // tarjetas con datos (SIM)
+  dataNotes    String?  // plan, MB/mes, tarifa de datos...
   quantity     Int      @default(1)
   costUnit     Float    @default(0)
   costCurrency String   @default("USD")  // USD | MXN
@@ -496,6 +504,9 @@ model PartnerDeal {
   createdBy   User     @relation(fields: [createdById], references: [id])
   projectId   String?
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  items       PartnerDealItem[]
+  dataCharges PartnerDataCharge[]
 }
 
 model PartnerPayment {
@@ -509,4 +520,34 @@ model PartnerPayment {
 
   createdById String
   createdBy   User @relation(fields: [createdById], references: [id])
+}
+
+model PartnerDealItem {
+  id           String @id @default(cuid())
+  name         String // "Trifásicas 79", "Medidor con interna"
+  quantity     Int    @default(1)
+  costUnit     Float  @default(0)
+  costCurrency String @default("USD")
+  saleUnit     Float  @default(0)
+  saleCurrency String @default("USD")
+  position     Int    @default(0)
+
+  dealId String
+  deal   PartnerDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+}
+
+model PartnerDataCharge {
+  id               String   @id @default(cuid())
+  period           String   // YYYY-MM
+  concept          String   // "Consumo datos julio", plan, etc.
+  cardsCount       Int?
+  amountToPartner  Float    // adeudo del mes al proveedor (DELEVSIS)
+  amountFromClient Float?   // opcional: lo cobrado al cliente por datos
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  createdById String
+  createdBy   User @relation(fields: [createdById], references: [id])
+  dealId      String?
+  deal        PartnerDeal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
 }
