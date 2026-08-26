@@ -38,6 +38,8 @@ model User {
   conversationsCreated Conversation[] @relation("ConvCreator")
   boardCardsCreated  BoardCard[] @relation("CardCreator")
   boardCardsAssigned BoardCard[] @relation("CardAssignee")
+  partnerDeals    PartnerDeal[]
+  partnerPayments PartnerPayment[]
 }
 
 enum Role {
@@ -74,6 +76,7 @@ model Project {
   deliveries Delivery[]
   boardCards BoardCard[]
   notes       Note[]  @relation("NoteProjects")
+  partnerDeals PartnerDeal[]
 }
 
 enum ProjectStatus {
@@ -458,4 +461,52 @@ model Note {
   quotes   Quote[]   @relation("NoteQuotes")
 
   @@index([userId, updatedAt])
+}
+
+// ===== SOCIEDAD (finanzas ICAPSA·DELEVSIS — acceso ultra restringido) =====
+
+model PartnerSettings {
+  id                 String @id @default("main")
+  partnerName        String @default("DELEVSIS")
+  defaultFx          Float  @default(19)    // tipo de cambio USD→MXN
+  defaultIsr         Float  @default(30)    // % ISR
+  defaultPartnerRate Float  @default(35)    // % del socio sobre utilidad neta
+  defaultIva         Float  @default(16)
+}
+
+model PartnerDeal {
+  id           String   @id @default(cuid())
+  name         String   // "Tarjetas Internas (DVMC)"
+  area         String?  // "CFE · Media Tensión"
+  quantity     Int      @default(1)
+  costUnit     Float    @default(0)
+  costCurrency String   @default("USD")  // USD | MXN
+  saleUnit     Float    @default(0)
+  saleCurrency String   @default("USD")
+  fx           Float    @default(19)
+  isrRate      Float    @default(30)
+  partnerRate  Float    @default(35)
+  ivaRate      Float    @default(16)
+  status       String   @default("OPEN") // OPEN | CLOSED
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+model PartnerPayment {
+  id        String   @id @default(cuid())
+  direction String   // TO_PARTNER (ICAPSA→socio) | FROM_PARTNER (socio→ICAPSA)
+  amount    Float    // MXN
+  concept   String
+  method    String?  // transferencia, efectivo...
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  createdById String
+  createdBy   User @relation(fields: [createdById], references: [id])
 }

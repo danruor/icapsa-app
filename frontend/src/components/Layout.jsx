@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Menu, X, MessagesSquare, KanbanSquare } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Menu, X, MessagesSquare, KanbanSquare, Briefcase } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../lib/authStore'
 import { brandForEmail } from '../lib/brand'
@@ -55,15 +55,18 @@ export default function Layout() {
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
 
   // Pestañas permitidas: admins ven todo; los demás solo Dashboard + lo que el super admin marcó
+  const allowedTabs = (user?.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean)
   let baseNav
   if (isAdmin) {
     baseNav = [...nav]
   } else {
-    const allowed = (user?.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean)
-    baseNav = nav.filter(item => item.key === 'dashboard' || allowed.includes(item.key))
+    baseNav = nav.filter(item => item.key === 'dashboard' || allowedTabs.includes(item.key))
   }
 
   let navItems = [...baseNav]
+  // Sociedad: SOLO super admin o acceso otorgado explícitamente (los admins normales NO la ven)
+  if (isSuperAdmin || allowedTabs.includes('partners'))
+    navItems = [...navItems, { to: '/partners', icon: Briefcase, label: 'Sociedad', key: 'partners' }]
   if (isSuperAdmin) navItems = [...navItems, ...superAdminNav]
   if (isAdmin) navItems = [...navItems, ...adminNav]
 

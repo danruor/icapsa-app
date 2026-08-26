@@ -5,6 +5,19 @@ import { authenticate, requireAdmin } from '../middleware/auth.js'
 import { logActivity, notify } from '../lib/events.js'
 
 const router = Router()
+
+// La pestaña financiera 'partners' (Sociedad) solo la concede el SUPER_ADMIN.
+// Si un admin normal edita a un usuario, se preserva el valor que ya tenía.
+async function sanitizeTabs(visibleTabs, req) {
+  let tabs = visibleTabs.filter(t => t !== 'partners')
+  if (req.user.role === 'SUPER_ADMIN') {
+    if (visibleTabs.includes('partners')) tabs.push('partners')
+  } else if (req.params?.id) {
+    const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: { visibleTabs: true } })
+    if ((target?.visibleTabs || '').split(',').map(x => x.trim()).includes('partners')) tabs.push('partners')
+  }
+  return tabs.join(',')
+}
 const prisma = new PrismaClient()
 
 router.use(authenticate)
@@ -52,7 +65,7 @@ router.post('/users', async (req, res) => {
       data: {
         email, password: hashed, name,
         role: role || 'MEMBER', phone, position,
-        ...(Array.isArray(visibleTabs) && { visibleTabs: visibleTabs.join(',') }),
+        ...(Array.isArray(visibleTabs) && { visibleTabs: await sanitizeTabs(visibleTabs, req) }),
         ...(projectIds?.length && {
           projects: {
             create: projectIds.map(pid => ({ projectId: pid, role: role || 'MEMBER' }))
@@ -91,7 +104,7 @@ router.patch('/users/:id', async (req, res) => {
       ...(phone !== undefined && { phone }),
       ...(position !== undefined && { position }),
       ...(isActive !== undefined && { isActive }),
-      ...(Array.isArray(visibleTabs) && { visibleTabs: visibleTabs.join(',') })
+      ...(Array.isArray(visibleTabs) && { visibleTabs: await sanitizeTabs(visibleTabs, req) })
     }
     if (password && password.length < 8)
       return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' })

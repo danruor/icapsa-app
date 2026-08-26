@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Chat from './pages/Chat'
 import Board from './pages/Board'
+import Partners from './pages/Partners'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import Inventory from './pages/Inventory'
@@ -30,6 +31,13 @@ const BrandApplier = () => {
   const user = useAuthStore((s) => s.user)
   useEffect(() => { applyBrand(brandForEmail(user?.email)) }, [user?.email])
   return null
+}
+
+// Sociedad: solo super admin o pestaña 'partners' otorgada explícitamente
+const PartnersRoute = ({ children }) => {
+  const user = useAuthStore((s) => s.user)
+  const allowed = (user?.visibleTabs || '').split(',').map(t => t.trim())
+  return (user?.role === 'SUPER_ADMIN' || allowed.includes('partners')) ? children : <Navigate to="/dashboard" replace />
 }
 
 const SuperAdminRoute = ({ children }) => {
@@ -57,6 +65,7 @@ export default function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="chat" element={<TabRoute tab="chat"><Chat /></TabRoute>} />
           <Route path="board" element={<TabRoute tab="board"><Board /></TabRoute>} />
+          <Route path="partners" element={<PartnersRoute><Partners /></PartnersRoute>} />
           <Route path="projects" element={<TabRoute tab="projects"><Projects /></TabRoute>} />
           <Route path="projects/:id" element={<TabRoute tab="projects"><ProjectDetail /></TabRoute>} />
           <Route path="inventory" element={<TabRoute tab="inventory"><Inventory /></TabRoute>} />
