@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../lib/authStore'
 import api from '../lib/api'
+import { ConceptsView, AnalyticsView, CompetitorsView } from './PartnersExtra'
 
 const money = (n) => '$' + (n ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -95,7 +96,7 @@ export default function Partners() {
       )}
 
       <div className="flex gap-1 border-b border-gray-200 mb-5 overflow-x-auto">
-        {[{ k: 'deals', label: 'Contratos' }, { k: 'payments', label: 'Pagos' }, { k: 'data', label: 'Datos (SIM)' }].map(x => (
+        {[{ k: 'deals', label: 'Contratos' }, { k: 'catalog', label: 'Catálogo' }, { k: 'analytics', label: 'Análisis 📊' }, { k: 'competitors', label: 'Competencia' }, { k: 'payments', label: 'Pagos' }, { k: 'data', label: 'Datos (SIM)' }].map(x => (
           <button key={x.k} onClick={() => setTab(x.k)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === x.k ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             {x.label}
@@ -104,6 +105,9 @@ export default function Partners() {
       </div>
 
       {tab === 'deals' && <DealsView settings={s} onEdit={setEditDeal} />}
+      {tab === 'catalog' && <ConceptsView settings={s} isSuper={isSuper} />}
+      {tab === 'analytics' && <AnalyticsView />}
+      {tab === 'competitors' && <CompetitorsView settings={s} isSuper={isSuper} />}
       {tab === 'payments' && <PaymentsView settings={s} isSuper={isSuper} />}
       {tab === 'data' && <DataView settings={s} isSuper={isSuper} />}
 
@@ -275,6 +279,7 @@ function DealModal({ deal, settings, onClose }) {
     division: deal?.division || '',
     state: deal?.state || '',
     contractRef: deal?.contractRef || '',
+    dealDate: (deal?.dealDate || new Date().toISOString()).split('T')[0],
     fx: deal?.fx ?? settings?.defaultFx ?? 19,
     isrRate: deal?.isrRate ?? settings?.defaultIsr ?? 30,
     partnerRate: deal?.partnerRate ?? settings?.defaultPartnerRate ?? 35,
@@ -287,11 +292,24 @@ function DealModal({ deal, settings, onClose }) {
   })
   const [items, setItems] = useState(
     deal?.items?.length
-      ? deal.items.map(it => ({ name: it.name, quantity: it.quantity, costUnit: it.costUnit, costCurrency: it.costCurrency, saleUnit: it.saleUnit, saleCurrency: it.saleCurrency }))
-      : [{ name: '', quantity: 1, costUnit: '', costCurrency: 'USD', saleUnit: '', saleCurrency: 'USD' }]
+      ? deal.items.map(it => ({ name: it.name, quantity: it.quantity, costUnit: it.costUnit, costCurrency: it.costCurrency, saleUnit: it.saleUnit, saleCurrency: it.saleCurrency, conceptId: it.conceptId || '', saveToCatalog: false }))
+      : [{ name: '', quantity: 1, costUnit: '', costCurrency: 'USD', saleUnit: '', saleCurrency: 'USD', conceptId: '', saveToCatalog: false }]
   )
 
   const { data: links } = useQuery({ queryKey: ['board-links'], queryFn: () => api.get('/board/links').then(r => r.data) })
+  const { data: catalog = [] } = useQuery({ queryKey: ['partners-concepts'], queryFn: () => api.get('/partners/concepts').then(r => r.data) })
+
+  // Elegir un concepto del catálogo rellena el renglón (precios copiados, editables)
+  const pickFromCatalog = (idx) => (e) => {
+    const c = catalog.find(x => x.id === e.target.value)
+    if (!c) { setItems(arr => arr.map((it, i) => i === idx ? { ...it, conceptId: '' } : it)); return }
+    setItems(arr => arr.map((it, i) => i === idx ? {
+      ...it, conceptId: c.id, name: c.name,
+      costUnit: c.costUnit, costCurrency: c.costCurrency,
+      saleUnit: c.saleUnit, saleCurrency: c.saleCurrency,
+      saveToCatalog: false
+    } : it))
+  }
 
   const calc = useMemo(() => computeDeal({ ...form, items }), [form, items])
   const partnerName = settings?.partnerName || 'DELEVSIS'
@@ -335,9 +353,15 @@ function DealModal({ deal, settings, onClose }) {
             <label className="block text-xs text-gray-500 mb-1">Nombre del contrato / obra *</label>
             <input value={form.name} onChange={set('name')} placeholder="Ej: Torre Lítica" className={inputCls} />
           </div>
-          <div className="col-span-2 sm:col-span-1">
-            <label className="block text-xs text-gray-500 mb-1">No. de contrato o pedido</label>
-            <input value={form.contractRef} onChange={set('contractRef')} placeholder="Ej: PED-2026-0142" className={inputCls} />
+          <div className="col-span-2 sm:col-span-1 grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">No. contrato / pedido</label>
+              <input value={form.contractRef} onChange={set('contractRef')} placeholder="PED-2026-0142" className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Fecha</label>
+              <input type="date" value={form.dealDate} onChange={set('dealDate')} className={inputCls} />
+            </div>
           </div>
 
           {form.clientType === 'CFE' ? (
@@ -379,6 +403,14 @@ function DealModal({ deal, settings, onClose }) {
               return (
                 <div key={idx} className="bg-gray-50 rounded-lg p-2.5">
                   <div className="flex flex-wrap items-end gap-2">
+                    <div className="w-44">
+                      <label className="block text-[10px] text-gray-400 mb-0.5">📚 Del catálogo</label>
+                      <select value={it.conceptId || ''} onChange={pickFromCatalog(idx)}
+                        className="w-full border border-gray-200 rounded px-1.5 py-1.5 text-xs focus:outline-none focus:border-brand-500">
+                        <option value="">Escribir libre...</option>
+                        {catalog.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
                     <div className="flex-1 min-w-[160px]">
                       <label className="block text-[10px] text-gray-400 mb-0.5">Concepto *</label>
                       <input value={it.name} onChange={setItem(idx, 'name')} placeholder="Ej: Trifásicas 79"
@@ -413,12 +445,21 @@ function DealModal({ deal, settings, onClose }) {
                       <Trash2 size={15} />
                     </button>
                   </div>
-                  <p className="text-[10px] text-gray-400 mt-1.5">
-                    Utilidad: <span className="text-gray-600 font-medium">{money(c.utility)}</span> ·
-                    Neta: <span className="text-gray-600 font-medium">{money(c.net)}</span> ·
-                    ICAPSA: <span className="text-brand-600 font-medium">{money(c.icapsaShare)}</span> ·
-                    {partnerName}: <span className="text-red-600 font-medium">{money(c.partnerShare)}</span>
-                  </p>
+                  <div className="flex items-center justify-between mt-1.5 gap-2 flex-wrap">
+                    <p className="text-[10px] text-gray-400">
+                      Utilidad: <span className="text-gray-600 font-medium">{money(c.utility)}</span> ·
+                      Neta: <span className="text-gray-600 font-medium">{money(c.net)}</span> ·
+                      ICAPSA: <span className="text-brand-600 font-medium">{money(c.icapsaShare)}</span> ·
+                      {partnerName}: <span className="text-red-600 font-medium">{money(c.partnerShare)}</span>
+                    </p>
+                    {!it.conceptId && it.name.trim() && (
+                      <label className="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer">
+                        <input type="checkbox" checked={!!it.saveToCatalog}
+                          onChange={e => setItems(arr => arr.map((x, i) => i === idx ? { ...x, saveToCatalog: e.target.checked } : x))} />
+                        Guardar en catálogo
+                      </label>
+                    )}
+                  </div>
                 </div>
               )
             })}

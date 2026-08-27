@@ -41,6 +41,8 @@ model User {
   partnerDeals    PartnerDeal[]
   partnerPayments PartnerPayment[]
   partnerDataCharges PartnerDataCharge[]
+  partnerConcepts PartnerConcept[]
+  partnerCompetitorPrices PartnerCompetitorPrice[]
 }
 
 enum Role {
@@ -486,6 +488,7 @@ model PartnerDeal {
   contractRef  String?  // No. de contrato o pedido
   includesData Boolean  @default(false) // tarjetas con datos (SIM)
   dataNotes    String?  // plan, MB/mes, tarifa de datos...
+  dealDate     DateTime @default(now()) // fecha del contrato (análisis temporal)
   quantity     Int      @default(1)
   costUnit     Float    @default(0)
   costCurrency String   @default("USD")  // USD | MXN
@@ -534,6 +537,9 @@ model PartnerDealItem {
 
   dealId String
   deal   PartnerDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  conceptId String?
+  concept   PartnerConcept? @relation(fields: [conceptId], references: [id], onDelete: SetNull)
 }
 
 model PartnerDataCharge {
@@ -550,4 +556,56 @@ model PartnerDataCharge {
   createdBy   User @relation(fields: [createdById], references: [id])
   dealId      String?
   deal        PartnerDeal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+}
+
+// Catálogo maestro de conceptos (tarjetas/productos) con costeo configurable
+model PartnerConcept {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  costingMode  String   @default("TOTAL") // TOTAL | BREAKDOWN (desglosado)
+  costUnit     Float    @default(0)       // costo total (si TOTAL) o suma cacheada
+  costCurrency String   @default("USD")
+  saleUnit     Float    @default(0)       // precio de venta de referencia
+  saleCurrency String   @default("USD")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdById String
+  createdBy   User @relation(fields: [createdById], references: [id])
+
+  costParts        PartnerConceptCost[]
+  dealItems        PartnerDealItem[]
+  competitorPrices PartnerCompetitorPrice[]
+}
+
+// Partes del costo interno (manufactura, componentes, software...)
+model PartnerConceptCost {
+  id       String @id @default(cuid())
+  label    String // "Manufactura", "Componentes", "Software"...
+  amount   Float  @default(0)
+  currency String @default("USD")
+  position Int    @default(0)
+
+  conceptId String
+  concept   PartnerConcept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+}
+
+// Precios de la competencia (licitaciones, constructoras) para análisis
+model PartnerCompetitorPrice {
+  id         String   @id @default(cuid())
+  competitor String   // empresa competidora
+  price      Float
+  currency   String   @default("MXN")
+  priceType  String   @default("SALE") // SALE | COST (estimado)
+  context    String?  // licitación, constructora, división...
+  date       DateTime @default(now())
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  conceptId String?
+  concept   PartnerConcept? @relation(fields: [conceptId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User @relation(fields: [createdById], references: [id])
 }
