@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import crypto from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import multer from 'multer'
 import path from 'path'
@@ -17,7 +18,8 @@ const storage = multer.diskStorage({
     cb(null, UPLOAD_DIR)
   },
   filename: (_, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
+    // Nombre impredecible criptográficamente (los archivos se sirven por URL)
+    const unique = crypto.randomUUID()
     cb(null, `${unique}${path.extname(file.originalname)}`)
   }
 })
