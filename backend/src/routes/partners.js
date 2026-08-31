@@ -17,6 +17,9 @@ const requirePartners = (req, res, next) => {
 }
 router.use(requirePartners)
 
+// Campo vacío o ausente se trata como 0 (p. ej. costo unitario en modo desglosado)
+const blankToZero = (v) => (v === '' || v === null || v === undefined) ? 0 : v
+
 const num = (v, { min = -Infinity, max = Infinity } = {}) => {
   const n = parseFloat(v)
   if (isNaN(n) || !isFinite(n) || n < min || n > max) return null
@@ -454,9 +457,10 @@ router.post('/concepts', async (req, res) => {
   try {
     const { name, description, costingMode, costCurrency, saleCurrency } = req.body
     if (!name?.trim()) return res.status(400).json({ error: 'El concepto necesita nombre' })
-    const saleUnit = num(req.body.saleUnit ?? 0, { min: 0, max: 1e12 })
-    let costUnit = num(req.body.costUnit ?? 0, { min: 0, max: 1e12 })
-    if ([saleUnit, costUnit].some(v => v === null)) return res.status(400).json({ error: 'Revisa los precios' })
+    const saleUnit = num(blankToZero(req.body.saleUnit), { min: 0, max: 1e12 })
+    let costUnit = num(blankToZero(req.body.costUnit), { min: 0, max: 1e12 })
+    if (saleUnit === null) return res.status(400).json({ error: 'Revisa el precio de venta' })
+    if (costUnit === null) return res.status(400).json({ error: 'Revisa el costo unitario' })
 
     const mode = costingMode === 'BREAKDOWN' ? 'BREAKDOWN' : 'TOTAL'
     const parsed = parseCostParts(req.body.costParts)
@@ -464,12 +468,20 @@ router.post('/concepts', async (req, res) => {
     if (mode === 'BREAKDOWN' && parsed.parts.length === 0)
       return res.status(400).json({ error: 'El modo desglosado requiere al menos una parte de costo' })
 
+    // En desglosado, el costo total se calcula de las partes (en MXN) y se guarda como referencia
+    let costCur = costCurrency === 'MXN' ? 'MXN' : 'USD'
+    if (mode === 'BREAKDOWN') {
+      const s = await getSettings()
+      costUnit = parsed.parts.reduce((sum, p) => sum + (p.currency === 'USD' ? p.amount * s.defaultFx : p.amount), 0)
+      costCur = 'MXN'
+    }
+
     const concept = await prisma.partnerConcept.create({
       data: {
         name: name.trim().slice(0, 120),
         description: description?.trim().slice(0, 300) || null,
         costingMode: mode,
-        costUnit, costCurrency: costCurrency === 'MXN' ? 'MXN' : 'USD',
+        costUnit, costCurrency: costCur,
         saleUnit, saleCurrency: saleCurrency === 'MXN' ? 'MXN' : 'USD',
         createdById: req.user.id,
         ...(mode === 'BREAKDOWN' && { costParts: { create: parsed.parts } })
@@ -501,8 +513,8 @@ router.patch('/concepts/:id', async (req, res) => {
     if (req.body.saleCurrency !== undefined) data.saleCurrency = req.body.saleCurrency === 'MXN' ? 'MXN' : 'USD'
     for (const k of ['costUnit', 'saleUnit']) {
       if (req.body[k] !== undefined) {
-        const n = num(req.body[k], { min: 0, max: 1e12 })
-        if (n === null) return res.status(400).json({ error: `Valor inválido en ${k}` })
+        const n = num(blankToZero(req.body[k]), { min: 0, max: 1e12 })
+        if (n === null) return res.status(400).json({ error: k === 'saleUnit' ? 'Revisa el precio de venta' : 'Revisa el costo unitario' })
         data[k] = n
       }
     }
@@ -511,6 +523,12 @@ router.patch('/concepts/:id', async (req, res) => {
       const parsed = parseCostParts(req.body.costParts)
       if (parsed.error) return res.status(400).json({ error: parsed.error })
       partOps = { costParts: { deleteMany: {}, create: parsed.parts } }
+      // Desglosado: cachear la suma de partes como costo de referencia
+      if ((data.costingMode || existing.costingMode) === 'BREAKDOWN' && parsed.parts.length) {
+        const s = await getSettings()
+        data.costUnit = parsed.parts.reduce((sum, p) => sum + (p.currency === 'USD' ? p.amount * s.defaultFx : p.amount), 0)
+        data.costCurrency = 'MXN'
+      }
     }
     const concept = await prisma.partnerConcept.update({
       where: { id: req.params.id },

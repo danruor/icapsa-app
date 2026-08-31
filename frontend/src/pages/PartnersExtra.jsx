@@ -135,7 +135,12 @@ function ConceptModal({ concept, settings, onClose }) {
 
   const save = useMutation({
     mutationFn: () => {
-      const payload = { ...form, costParts: form.costingMode === 'BREAKDOWN' ? parts : [] }
+      const payload = {
+        ...form,
+        costUnit: form.costingMode === 'BREAKDOWN' ? 0 : (form.costUnit === '' ? 0 : form.costUnit),
+        saleUnit: form.saleUnit === '' ? 0 : form.saleUnit,
+        costParts: form.costingMode === 'BREAKDOWN' ? parts.map(p => ({ ...p, amount: p.amount === '' ? 0 : p.amount })) : []
+      }
       return concept ? api.patch(`/partners/concepts/${concept.id}`, payload) : api.post('/partners/concepts', payload)
     },
     onSuccess: () => { qc.invalidateQueries(['partners-concepts']); onClose() },
