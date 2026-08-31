@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { Plus, X, Pencil, Trash2, BookOpen, TrendingUp, Target, Wrench } from 'lucide-react'
 import { useAuthStore } from '../lib/authStore'
+import { useSort, SortTh } from '../components/sortable'
 import { brandForEmail } from '../lib/brand'
 import api from '../lib/api'
 
@@ -24,6 +25,15 @@ function useBrandHex() {
 }
 
 // ================= CATÁLOGO =================
+const CONCEPT_SORTERS = {
+  name: c => c.name,
+  mode: c => c.costingMode,
+  cost: c => c.calc.costMXN,
+  sale: c => c.calc.saleMXN,
+  margin: c => c.calc.marginPct,
+  uses: c => c._count.dealItems
+}
+
 export function ConceptsView({ settings, isSuper }) {
   const qc = useQueryClient()
   const [edit, setEdit] = useState(null) // null | 'new' | concept
@@ -31,6 +41,7 @@ export function ConceptsView({ settings, isSuper }) {
     queryKey: ['partners-concepts'],
     queryFn: () => api.get('/partners/concepts').then(r => r.data)
   })
+  const { sorted, sortKey, sortDir, toggle } = useSort(concepts, CONCEPT_SORTERS, 'name', 'asc')
   const remove = useMutation({
     mutationFn: (id) => api.delete(`/partners/concepts/${id}`),
     onSuccess: () => qc.invalidateQueries(['partners-concepts']),
@@ -50,13 +61,13 @@ export function ConceptsView({ settings, isSuper }) {
       <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
         <table className="w-full text-sm min-w-[760px]">
           <thead>
-            <tr className="border-b border-gray-100 text-left text-xs text-gray-500 whitespace-nowrap">
-              <th className="px-3 py-3 font-medium">Concepto</th>
-              <th className="px-3 py-3 font-medium">Costeo</th>
-              <th className="px-3 py-3 font-medium text-right">Costo (MXN)</th>
-              <th className="px-3 py-3 font-medium text-right">Venta (MXN)</th>
-              <th className="px-3 py-3 font-medium text-right">Margen</th>
-              <th className="px-3 py-3 font-medium text-center">Usos</th>
+            <tr className="border-b border-gray-100 text-xs text-gray-500 whitespace-nowrap">
+              <SortTh label="Concepto" k="name" defaultDir="asc" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Costeo" k="mode" defaultDir="asc" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Costo (MXN)" k="cost" align="right" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Venta (MXN)" k="sale" align="right" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Margen" k="margin" align="right" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Usos" k="uses" align="center" {...{ sortKey, sortDir, onToggle: toggle }} />
               <th className="px-3 py-3"></th>
             </tr>
           </thead>
@@ -65,7 +76,7 @@ export function ConceptsView({ settings, isSuper }) {
             {!isLoading && concepts.length === 0 && (
               <tr><td colSpan="7" className="px-4 py-12 text-center text-gray-400">Catálogo vacío — agrega tu primera tarjeta/concepto 📚</td></tr>
             )}
-            {concepts.map(c => (
+            {sorted.map(c => (
               <tr key={c.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2.5">
                   <button onClick={() => setEdit(c)} className="font-medium text-gray-900 hover:text-brand-600 text-left">{c.name}</button>

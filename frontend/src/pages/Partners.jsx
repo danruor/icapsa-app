@@ -7,6 +7,7 @@ import {
 import { useAuthStore } from '../lib/authStore'
 import api from '../lib/api'
 import { ConceptsView, AnalyticsView, CompetitorsView } from './PartnersExtra'
+import { useSort, SortTh } from '../components/sortable'
 
 const money = (n) => '$' + (n ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -128,6 +129,18 @@ function SummaryCard({ icon: Icon, label, value, sub, highlight }) {
 }
 
 // ============ Contratos ============
+const DEAL_SORTERS = {
+  name: d => d.name,
+  client: d => d.clientType === 'CFE' ? `CFE ${d.division || ''}` : (d.clientName || 'zz'),
+  date: d => new Date(d.dealDate || d.createdAt).getTime(),
+  items: d => d.items.length,
+  cost: d => d.calc.costTotal,
+  sale: d => d.calc.saleTotal,
+  net: d => d.calc.net,
+  icapsa: d => d.calc.icapsaShare,
+  partner: d => d.calc.partnerShare
+}
+
 function DealsView({ settings, onEdit }) {
   const qc = useQueryClient()
   const [expanded, setExpanded] = useState(null)
@@ -135,6 +148,7 @@ function DealsView({ settings, onEdit }) {
     queryKey: ['partners-deals'],
     queryFn: () => api.get('/partners/deals').then(r => r.data)
   })
+  const { sorted, sortKey, sortDir, toggle } = useSort(deals, DEAL_SORTERS, 'date')
   const remove = useMutation({
     mutationFn: (id) => api.delete(`/partners/deals/${id}`),
     onSuccess: () => { qc.invalidateQueries(['partners-deals']); qc.invalidateQueries(['partners-summary']) },
@@ -154,25 +168,26 @@ function DealsView({ settings, onEdit }) {
       <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
         <table className="w-full text-sm min-w-[1000px]">
           <thead>
-            <tr className="border-b border-gray-100 text-left text-xs text-gray-500 whitespace-nowrap">
+            <tr className="border-b border-gray-100 text-xs text-gray-500 whitespace-nowrap">
               <th className="px-3 py-3 w-8"></th>
-              <th className="px-3 py-3 font-medium">Contrato</th>
-              <th className="px-3 py-3 font-medium">Cliente</th>
-              <th className="px-3 py-3 font-medium text-center">Conceptos</th>
-              <th className="px-3 py-3 font-medium text-right">Costo MXN</th>
-              <th className="px-3 py-3 font-medium text-right">Venta MXN</th>
-              <th className="px-3 py-3 font-medium text-right">Neta (−ISR)</th>
-              <th className="px-3 py-3 font-medium text-right">ICAPSA</th>
-              <th className="px-3 py-3 font-medium text-right">{partnerName}</th>
+              <SortTh label="Contrato" k="name" defaultDir="asc" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Fecha" k="date" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Cliente" k="client" defaultDir="asc" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Conceptos" k="items" align="center" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Costo MXN" k="cost" align="right" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Venta MXN" k="sale" align="right" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="Neta (−ISR)" k="net" align="right" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label="ICAPSA" k="icapsa" align="right" {...{ sortKey, sortDir, onToggle: toggle }} />
+              <SortTh label={partnerName} k="partner" align="right" {...{ sortKey, sortDir, onToggle: toggle }} />
               <th className="px-3 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {isLoading && <tr><td colSpan="10" className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>}
+            {isLoading && <tr><td colSpan="11" className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>}
             {!isLoading && deals.length === 0 && (
-              <tr><td colSpan="10" className="px-4 py-12 text-center text-gray-400">Sin contratos todavía. Registra el primero. 📊</td></tr>
+              <tr><td colSpan="11" className="px-4 py-12 text-center text-gray-400">Sin contratos todavía. Registra el primero. 📊</td></tr>
             )}
-            {deals.map(d => (
+            {sorted.map(d => (
               <DealRow key={d.id} d={d} expanded={expanded === d.id}
                 onToggle={() => setExpanded(expanded === d.id ? null : d.id)}
                 onEdit={() => onEdit(d)}
@@ -204,6 +219,9 @@ function DealRow({ d, expanded, onToggle, onEdit, onDelete, partnerName }) {
             {d.status === 'CLOSED' && <span>· cerrado</span>}
           </div>
         </td>
+        <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+          {new Date(d.dealDate || d.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: '2-digit' })}
+        </td>
         <td className="px-3 py-2.5">
           <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium ${d.clientType === 'CFE' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
             {d.clientType === 'CFE' ? <Zap size={10} /> : <Building2 size={10} />}
@@ -224,7 +242,7 @@ function DealRow({ d, expanded, onToggle, onEdit, onDelete, partnerName }) {
       </tr>
       {expanded && (
         <tr>
-          <td colSpan="10" className="px-4 py-3 bg-gray-50">
+          <td colSpan="11" className="px-4 py-3 bg-gray-50">
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-gray-400">
@@ -552,6 +570,9 @@ function PaymentsView({ settings, isSuper }) {
     queryKey: ['partners-payments'],
     queryFn: () => api.get('/partners/payments').then(r => r.data)
   })
+  const { sorted: sortedPayments, sortKey: paySort, sortDir: payDir, toggle: payToggle } = useSort(
+    payments, { date: p => new Date(p.date).getTime(), amount: p => p.amount }, 'date'
+  )
   const create = useMutation({
     mutationFn: () => api.post('/partners/payments', form),
     onSuccess: () => {
@@ -590,9 +611,18 @@ function PaymentsView({ settings, isSuper }) {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50">
+        <div className="flex items-center justify-end gap-1 px-4 py-2">
+          <span className="text-[10px] text-gray-400 mr-1">Ordenar por:</span>
+          {[{ k: 'date', l: 'Fecha' }, { k: 'amount', l: 'Monto' }].map(o => (
+            <button key={o.k} onClick={() => payToggle(o.k)}
+              className={`text-xs px-2 py-1 rounded-lg font-medium ${paySort === o.k ? 'bg-brand-50 text-brand-600' : 'text-gray-500 hover:bg-gray-100'}`}>
+              {o.l}{paySort === o.k ? (payDir === 'asc' ? ' ↑' : ' ↓') : ''}
+            </button>
+          ))}
+        </div>
         {isLoading && <p className="text-center text-gray-400 text-sm py-8">Cargando...</p>}
         {!isLoading && payments.length === 0 && <p className="text-center text-gray-400 text-sm py-10">Sin pagos registrados</p>}
-        {payments.map(p => (
+        {sortedPayments.map(p => (
           <div key={p.id} className="flex items-center gap-3 px-4 py-3">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${p.direction === 'TO_PARTNER' ? 'bg-red-50 text-red-500' : 'bg-brand-50 text-brand-600'}`}>
               {p.direction === 'TO_PARTNER' ? <ArrowUpRight size={16} /> : <ArrowDownLeft size={16} />}
