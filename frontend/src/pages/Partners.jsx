@@ -2,29 +2,15 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Briefcase, Plus, X, Pencil, Trash2, Settings2, ArrowUpRight, ArrowDownLeft,
-  TrendingUp, Landmark, Scale, Wallet, ChevronDown, ChevronRight, Zap, Building2, Wifi
+  TrendingUp, Landmark, Scale, Wallet, ChevronDown, ChevronRight, Zap, Building2, Wifi, Lock, FileSpreadsheet
 } from 'lucide-react'
 import { useAuthStore } from '../lib/authStore'
-import api from '../lib/api'
+import api, { downloadFile } from '../lib/api'
+import { CFE_DIVISIONS, MX_STATES, resolveConceptPrice } from '../lib/mx'
 import { ConceptsView, AnalyticsView, CompetitorsView } from './PartnersExtra'
 import { useSort, SortTh } from '../components/sortable'
 
 const money = (n) => '$' + (n ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-// Las 16 divisiones de distribución de CFE
-export const CFE_DIVISIONS = [
-  'Baja California', 'Noroeste', 'Norte', 'Golfo Norte', 'Golfo Centro', 'Bajío',
-  'Jalisco', 'Centro Occidente', 'Centro Sur', 'Centro Oriente', 'Oriente',
-  'Sureste', 'Peninsular', 'Valle de México Norte', 'Valle de México Centro', 'Valle de México Sur'
-]
-
-const MX_STATES = [
-  'Aguascalientes', 'Baja California', 'Baja California Sur', 'Campeche', 'Chiapas', 'Chihuahua',
-  'Ciudad de México', 'Coahuila', 'Colima', 'Durango', 'Estado de México', 'Guanajuato', 'Guerrero',
-  'Hidalgo', 'Jalisco', 'Michoacán', 'Morelos', 'Nayarit', 'Nuevo León', 'Oaxaca', 'Puebla',
-  'Querétaro', 'Quintana Roo', 'San Luis Potosí', 'Sinaloa', 'Sonora', 'Tabasco', 'Tamaulipas',
-  'Tlaxcala', 'Veracruz', 'Yucatán', 'Zacatecas'
-]
 
 // Cálculo espejo del backend (vista previa en vivo)
 function computeItem(it, deal) {
@@ -54,44 +40,65 @@ export default function Partners() {
   const me = useAuthStore(s => s.user)
   const isSuper = me?.role === 'SUPER_ADMIN'
   const [tab, setTab] = useState('deals')
+  const [year, setYear] = useState(String(new Date().getFullYear()))  // 'all' = histórico
   const [editDeal, setEditDeal] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
 
+  const yearParam = year === 'all' ? '' : `?year=${year}`
   const { data: summary } = useQuery({
-    queryKey: ['partners-summary'],
-    queryFn: () => api.get('/partners/summary').then(r => r.data)
+    queryKey: ['partners-summary', year],
+    queryFn: () => api.get(`/partners/summary${yearParam}`).then(r => r.data)
   })
 
   const s = summary?.settings
   const t = summary?.totals
   const balance = summary?.balance ?? 0
   const partnerName = s?.partnerName || 'DELEVSIS'
+  const yearLabel = year === 'all' ? 'histórico' : `ejercicio ${year}`
 
   return (
     <div className="p-4 md:p-8">
-      <div className="flex items-start justify-between gap-3 mb-5">
+      <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
             <Briefcase size={22} className="text-brand-500" /> Sociedad
+            {summary?.isClosed && (
+              <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium"><Lock size={11} /> Ejercicio cerrado</span>
+            )}
           </h1>
           <p className="text-sm text-gray-500 mt-1">Cuenta ICAPSA · {partnerName} — contratos, utilidades, datos y pagos</p>
         </div>
-        {isSuper && (
-          <button onClick={() => setShowSettings(true)}
-            className="flex items-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-2 rounded-lg">
-            <Settings2 size={15} /> <span className="hidden sm:inline">Ajustes</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select value={year} onChange={e => setYear(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:border-brand-500 bg-white">
+            {(summary?.years || [new Date().getFullYear()]).map(y => (
+              <option key={y} value={String(y)}>{summary?.closedYears?.includes(y) ? `🔒 ${y}` : `Ejercicio ${y}`}</option>
+            ))}
+            <option value="all">Histórico completo</option>
+          </select>
+          <button onClick={() => downloadFile(`/partners/export.xlsx${yearParam}`, `Sociedad-${year === 'all' ? 'historico' : year}.xlsx`)}
+            className="flex items-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-2 rounded-lg" title="Exportar estado de cuenta a Excel">
+            <FileSpreadsheet size={15} /> <span className="hidden sm:inline">Excel</span>
           </button>
-        )}
+          {isSuper && (
+            <button onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-2 rounded-lg">
+              <Settings2 size={15} /> <span className="hidden sm:inline">Ajustes</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {t && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <SummaryCard icon={TrendingUp} label="Venta total" value={money(t.saleTotal)} sub={`Costo: ${money(t.costTotal)}`} />
-          <SummaryCard icon={Landmark} label="Utilidad neta (tras ISR)" value={money(t.net)} sub={`ISR: ${money(t.isr)}`} />
-          <SummaryCard icon={Scale} label="Reparto" value={money(t.icapsaShare)}
-            sub={`${partnerName}: ${money(t.partnerShare)} · Datos: ${money(summary?.dataOwed || 0)}`} />
-          <SummaryCard icon={Wallet} label={balance >= 0 ? `Por pagar a ${partnerName}` : `${partnerName} debe`}
-            value={money(Math.abs(balance))} sub={`Pagado neto: ${money(summary?.netPaid || 0)}`}
+          <SummaryCard icon={TrendingUp} label={`Venta ${yearLabel}`} value={money(t.saleTotal)} sub={`Costo: ${money(t.costTotal)} · ${summary.dealCount} contratos`} />
+          <SummaryCard icon={Landmark} label="Utilidad neta (tras ISR)" value={money(t.net)} sub={`ISR: ${money(t.isr)} · ICAPSA: ${money(t.icapsaShare)}`} />
+          <SummaryCard icon={Scale} label={`Comisión ${partnerName}`} value={money(t.partnerShare)}
+            sub={`Datos: ${money(summary.dataOwed || 0)} adeudo · margen datos ${money(summary.dataMargin || 0)}`} />
+          <SummaryCard icon={Wallet}
+            label={balance >= 0 ? `Por pagar a ${partnerName} (${yearLabel})` : `${partnerName} debe (${yearLabel})`}
+            value={money(Math.abs(balance))}
+            sub={year === 'all' ? `Pagado neto: ${money(summary.netPaid || 0)}` : `Arrastre previo: ${money(summary.carryOver || 0)} · Total: ${money(summary.balanceTotal || 0)}`}
             highlight={balance > 0.01} />
         </div>
       )}
@@ -105,15 +112,15 @@ export default function Partners() {
         ))}
       </div>
 
-      {tab === 'deals' && <DealsView settings={s} onEdit={setEditDeal} />}
+      {tab === 'deals' && <DealsView settings={s} year={year} isClosed={summary?.isClosed} onEdit={setEditDeal} />}
       {tab === 'catalog' && <ConceptsView settings={s} isSuper={isSuper} />}
-      {tab === 'analytics' && <AnalyticsView />}
+      {tab === 'analytics' && <AnalyticsView year={year} />}
       {tab === 'competitors' && <CompetitorsView settings={s} isSuper={isSuper} />}
-      {tab === 'payments' && <PaymentsView settings={s} isSuper={isSuper} />}
-      {tab === 'data' && <DataView settings={s} isSuper={isSuper} />}
+      {tab === 'payments' && <PaymentsView settings={s} year={year} isSuper={isSuper} isClosed={summary?.isClosed} />}
+      {tab === 'data' && <DataView settings={s} year={year} isSuper={isSuper} isClosed={summary?.isClosed} />}
 
       {editDeal && <DealModal deal={editDeal === 'new' ? null : editDeal} settings={s} onClose={() => setEditDeal(null)} />}
-      {showSettings && s && <SettingsModal settings={s} onClose={() => setShowSettings(false)} />}
+      {showSettings && s && <SettingsModal settings={s} years={summary?.years || []} onClose={() => setShowSettings(false)} />}
     </div>
   )
 }
@@ -141,12 +148,12 @@ const DEAL_SORTERS = {
   partner: d => d.calc.partnerShare
 }
 
-function DealsView({ settings, onEdit }) {
+function DealsView({ settings, year, isClosed, onEdit }) {
   const qc = useQueryClient()
   const [expanded, setExpanded] = useState(null)
   const { data: deals = [], isLoading } = useQuery({
-    queryKey: ['partners-deals'],
-    queryFn: () => api.get('/partners/deals').then(r => r.data)
+    queryKey: ['partners-deals', year],
+    queryFn: () => api.get(`/partners/deals${year === 'all' ? '' : `?year=${year}`}`).then(r => r.data)
   })
   const { sorted, sortKey, sortDir, toggle } = useSort(deals, DEAL_SORTERS, 'date')
   const remove = useMutation({
@@ -158,9 +165,10 @@ function DealsView({ settings, onEdit }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-3">
+      <div className="flex justify-between items-center mb-3 gap-3">
+        <p className="text-xs text-gray-400">{isClosed ? '🔒 Este ejercicio está cerrado: los contratos son de solo lectura.' : `Contratos del ${year === 'all' ? 'histórico completo' : `ejercicio ${year}`}.`}</p>
         <button onClick={() => onEdit('new')}
-          className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg">
+          className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg flex-shrink-0">
           <Plus size={16} /> Nuevo contrato
         </button>
       </div>
@@ -317,14 +325,19 @@ function DealModal({ deal, settings, onClose }) {
   const { data: links } = useQuery({ queryKey: ['board-links'], queryFn: () => api.get('/board/links').then(r => r.data) })
   const { data: catalog = [] } = useQuery({ queryKey: ['partners-concepts'], queryFn: () => api.get('/partners/concepts').then(r => r.data) })
 
-  // Elegir un concepto del catálogo rellena el renglón (precios copiados, editables)
+  // Elegir un concepto del catálogo rellena el renglón: el precio de venta se resuelve
+  // según la división CFE / estado / cliente del contrato (editable después)
+  const [priceSource, setPriceSource] = useState({})
   const pickFromCatalog = (idx) => (e) => {
     const c = catalog.find(x => x.id === e.target.value)
     if (!c) { setItems(arr => arr.map((it, i) => i === idx ? { ...it, conceptId: '' } : it)); return }
+    const resolved = resolveConceptPrice(c, form)
+    setPriceSource(ps => ({ ...ps, [idx]: resolved.source }))
     setItems(arr => arr.map((it, i) => i === idx ? {
       ...it, conceptId: c.id, name: c.name,
-      costUnit: c.costUnit, costCurrency: c.costCurrency,
-      saleUnit: c.saleUnit, saleCurrency: c.saleCurrency,
+      costUnit: c.costingMode === 'BREAKDOWN' ? c.calc.costMXN : c.costUnit,
+      costCurrency: c.costingMode === 'BREAKDOWN' ? 'MXN' : c.costCurrency,
+      saleUnit: resolved.saleUnit, saleCurrency: resolved.saleCurrency,
       saveToCatalog: false
     } : it))
   }
@@ -470,6 +483,9 @@ function DealModal({ deal, settings, onClose }) {
                       ICAPSA: <span className="text-brand-600 font-medium">{money(c.icapsaShare)}</span> ·
                       {partnerName}: <span className="text-red-600 font-medium">{money(c.partnerShare)}</span>
                     </p>
+                    {it.conceptId && priceSource[idx] && (
+                      <span className="text-[10px] text-sky-600">💰 {priceSource[idx]}</span>
+                    )}
                     {!it.conceptId && it.name.trim() && (
                       <label className="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer">
                         <input type="checkbox" checked={!!it.saveToCatalog}
@@ -561,14 +577,14 @@ function CalcCell({ label, v, strong, brand, red, muted }) {
 }
 
 // ============ Pagos ============
-function PaymentsView({ settings, isSuper }) {
+function PaymentsView({ settings, year, isSuper, isClosed }) {
   const qc = useQueryClient()
   const partnerName = settings?.partnerName || 'DELEVSIS'
   const [form, setForm] = useState({ direction: 'TO_PARTNER', amount: '', concept: '', method: '', date: new Date().toISOString().split('T')[0] })
 
   const { data: payments = [], isLoading } = useQuery({
-    queryKey: ['partners-payments'],
-    queryFn: () => api.get('/partners/payments').then(r => r.data)
+    queryKey: ['partners-payments', year],
+    queryFn: () => api.get(`/partners/payments${year === 'all' ? '' : `?year=${year}`}`).then(r => r.data)
   })
   const { sorted: sortedPayments, sortKey: paySort, sortDir: payDir, toggle: payToggle } = useSort(
     payments, { date: p => new Date(p.date).getTime(), amount: p => p.amount }, 'date'
@@ -592,7 +608,7 @@ function PaymentsView({ settings, isSuper }) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      {!isClosed && <div className="bg-white rounded-xl border border-gray-200 p-4">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Registrar pago</p>
         <div className="flex flex-wrap items-end gap-2">
           <select value={form.direction} onChange={set('direction')} className={inputCls}>
@@ -608,7 +624,7 @@ function PaymentsView({ settings, isSuper }) {
             {create.isPending ? '...' : 'Registrar'}
           </button>
         </div>
-      </div>
+      </div>}
 
       <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50">
         <div className="flex items-center justify-end gap-1 px-4 py-2">
@@ -648,129 +664,217 @@ function PaymentsView({ settings, isSuper }) {
   )
 }
 
-// ============ Datos (SIM) — consumo mensual ============
-function DataView({ settings, isSuper }) {
+// ============ Datos (SIM) — consumo variable por SIM/lote y mes ============
+const EMPTY_DATA = (s) => ({
+  period: new Date().toISOString().slice(0, 7), concept: '', simLabel: '', cardsCount: '', mbUsed: '',
+  autoCalc: true, costPerMB: s?.dataCostPerMB ?? 0, salePerMB: s?.dataSalePerMB ?? 0,
+  fixedCostPerSim: s?.dataFixedCostPerSim ?? 0, fixedSalePerSim: s?.dataFixedSalePerSim ?? 0,
+  amountToPartner: '', amountFromClient: '', dealId: '', notes: ''
+})
+
+function DataView({ settings, year, isSuper, isClosed }) {
   const qc = useQueryClient()
   const partnerName = settings?.partnerName || 'DELEVSIS'
-  const [form, setForm] = useState({
-    period: new Date().toISOString().slice(0, 7), concept: '', cardsCount: '',
-    amountToPartner: '', amountFromClient: '', dealId: '', notes: ''
-  })
+  const [form, setForm] = useState(EMPTY_DATA(settings))
+  const [editingId, setEditingId] = useState(null)
 
   const { data: charges = [], isLoading } = useQuery({
-    queryKey: ['partners-data'],
-    queryFn: () => api.get('/partners/data-charges').then(r => r.data)
+    queryKey: ['partners-data', year],
+    queryFn: () => api.get(`/partners/data-charges${year === 'all' ? '' : `?year=${year}`}`).then(r => r.data)
   })
   const { data: deals = [] } = useQuery({
-    queryKey: ['partners-deals'],
+    queryKey: ['partners-deals', 'all'],
     queryFn: () => api.get('/partners/deals').then(r => r.data)
   })
 
-  const create = useMutation({
-    mutationFn: () => api.post('/partners/data-charges', form),
-    onSuccess: () => {
-      setForm(f => ({ ...f, concept: '', cardsCount: '', amountToPartner: '', amountFromClient: '', notes: '' }))
-      qc.invalidateQueries(['partners-data']); qc.invalidateQueries(['partners-summary'])
-    },
+  const invalidate = () => { qc.invalidateQueries(['partners-data']); qc.invalidateQueries(['partners-summary']) }
+  const save = useMutation({
+    mutationFn: () => editingId ? api.patch(`/partners/data-charges/${editingId}`, form) : api.post('/partners/data-charges', form),
+    onSuccess: () => { setForm(EMPTY_DATA(settings)); setEditingId(null); invalidate() },
     onError: (e) => alert(e.response?.data?.error || 'Error')
   })
   const remove = useMutation({
     mutationFn: (id) => api.delete(`/partners/data-charges/${id}`),
-    onSuccess: () => { qc.invalidateQueries(['partners-data']); qc.invalidateQueries(['partners-summary']) },
+    onSuccess: invalidate,
     onError: (e) => alert(e.response?.data?.error || 'Error')
   })
 
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+  const startEdit = (c) => {
+    setEditingId(c.id)
+    setForm({
+      period: c.period, concept: c.concept, simLabel: c.simLabel || '', cardsCount: c.cardsCount ?? '', mbUsed: c.mbUsed ?? '',
+      autoCalc: c.autoCalc, costPerMB: c.costPerMB ?? settings?.dataCostPerMB ?? 0, salePerMB: c.salePerMB ?? settings?.dataSalePerMB ?? 0,
+      fixedCostPerSim: c.fixedCostPerSim ?? settings?.dataFixedCostPerSim ?? 0, fixedSalePerSim: c.fixedSalePerSim ?? settings?.dataFixedSalePerSim ?? 0,
+      amountToPartner: c.amountToPartner, amountFromClient: c.amountFromClient ?? '', dealId: c.dealId || '', notes: c.notes || ''
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
   const inputCls = "border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+  const n = (v) => parseFloat(v) || 0
+
+  // Cálculo en vivo
+  const calcCost = form.autoCalc ? n(form.mbUsed) * n(form.costPerMB) + n(form.cardsCount) * n(form.fixedCostPerSim) : n(form.amountToPartner)
+  const calcSale = form.autoCalc ? n(form.mbUsed) * n(form.salePerMB) + n(form.cardsCount) * n(form.fixedSalePerSim) : n(form.amountFromClient)
+
   const totalOwed = charges.reduce((s, c) => s + c.amountToPartner, 0)
+  const totalBilled = charges.reduce((s, c) => s + (c.amountFromClient || 0), 0)
+  const totalMB = charges.reduce((s, c) => s + (c.mbUsed || 0), 0)
   const dataDeals = deals.filter(d => d.includesData)
+
+  // Resumen por periodo
+  const byPeriod = Object.entries(charges.reduce((acc, c) => {
+    if (!acc[c.period]) acc[c.period] = { mb: 0, cost: 0, sale: 0, n: 0 }
+    acc[c.period].mb += c.mbUsed || 0; acc[c.period].cost += c.amountToPartner; acc[c.period].sale += c.amountFromClient || 0; acc[c.period].n++
+    return acc
+  }, {})).sort((a, b) => b[0].localeCompare(a[0]))
 
   return (
     <div className="space-y-4">
       <div className="bg-sky-50 border border-sky-100 rounded-xl px-4 py-3 text-xs text-sky-800 flex items-start gap-2">
         <Wifi size={15} className="flex-shrink-0 mt-0.5" />
-        <span>Registro del consumo de datos (SIM) que se adeuda mensualmente a {partnerName}. Por ahora se captura manualmente; cuando se conecte la API del proveedor, estos cargos se generarán automáticamente por periodo. El total se integra al saldo de la cuenta.</span>
+        <span>El consumo de datos es <b>variable</b>: registra cada mes los MB usados por SIM o lote y el sistema calcula lo que se debe a {partnerName} y lo que se cobra al cliente con las tarifas por MB (ajustables por registro). Si el proveedor ya te facturó un monto, usa "Monto directo". Cuando se conecte la API del proveedor, estos registros se generarán solos.</span>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Registrar consumo del mes</p>
-        <div className="flex flex-wrap items-end gap-2">
-          <div><label className="block text-[10px] text-gray-400 mb-0.5">Periodo</label>
-            <input type="month" value={form.period} onChange={set('period')} className={inputCls} /></div>
-          <div className="flex-1 min-w-[160px]"><label className="block text-[10px] text-gray-400 mb-0.5">Concepto *</label>
-            <input value={form.concept} onChange={set('concept')} placeholder="Ej: Consumo datos agosto" className={inputCls + ' w-full'} /></div>
-          <div className="w-24"><label className="block text-[10px] text-gray-400 mb-0.5">Tarjetas</label>
-            <input type="number" value={form.cardsCount} onChange={set('cardsCount')} className={inputCls + ' w-full'} /></div>
-          <div className="w-36"><label className="block text-[10px] text-gray-400 mb-0.5">$ a {partnerName} *</label>
-            <input type="number" step="0.01" value={form.amountToPartner} onChange={set('amountToPartner')} className={inputCls + ' w-full'} /></div>
-          <div className="w-36"><label className="block text-[10px] text-gray-400 mb-0.5">$ cobrado a cliente</label>
-            <input type="number" step="0.01" value={form.amountFromClient} onChange={set('amountFromClient')} className={inputCls + ' w-full'} /></div>
-          <div className="min-w-[150px]"><label className="block text-[10px] text-gray-400 mb-0.5">Contrato</label>
-            <select value={form.dealId} onChange={set('dealId')} className={inputCls + ' w-full'}>
-              <option value="">Sin vincular</option>
-              {(dataDeals.length ? dataDeals : deals).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select></div>
-          <button onClick={() => create.mutate()} disabled={!form.concept.trim() || !form.amountToPartner || create.isPending}
-            className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-40">
-            {create.isPending ? '...' : 'Registrar'}
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-200">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Historial de consumo</p>
-          <p className="text-sm">Total adeudado por datos: <span className="font-semibold text-red-600">{money(totalOwed)}</span></p>
-        </div>
-        <div className="divide-y divide-gray-50">
-          {isLoading && <p className="text-center text-gray-400 text-sm py-8">Cargando...</p>}
-          {!isLoading && charges.length === 0 && <p className="text-center text-gray-400 text-sm py-10">Sin cargos de datos registrados</p>}
-          {charges.map(c => (
-            <div key={c.id} className="flex items-center gap-3 px-4 py-3">
-              <span className="text-xs font-mono bg-gray-100 text-gray-600 rounded px-2 py-1 flex-shrink-0">{c.period}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-900">{c.concept}</p>
-                <p className="text-xs text-gray-400">
-                  {c.cardsCount ? `${c.cardsCount.toLocaleString('es-MX')} tarjetas · ` : ''}
-                  {c.deal ? `${c.deal.name} · ` : ''}
-                  {c.amountFromClient ? `cobrado al cliente: ${money(c.amountFromClient)} · ` : ''}
-                  por {c.createdBy?.name}
-                </p>
-              </div>
-              <span className="font-semibold text-red-600 whitespace-nowrap">−{money(c.amountToPartner)}</span>
-              {isSuper && (
-                <button onClick={() => { if (confirm('¿Eliminar este cargo?')) remove.mutate(c.id) }}
-                  className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
-              )}
+      {!isClosed && (
+        <div className={`bg-white rounded-xl border p-4 ${editingId ? 'border-brand-300 ring-2 ring-brand-100' : 'border-gray-200'}`}>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{editingId ? '✏️ Corrigiendo registro' : 'Registrar consumo del mes'}</p>
+            <div className="flex gap-1">
+              {[{ v: true, l: 'Por consumo (MB)' }, { v: false, l: 'Monto directo' }].map(m => (
+                <button key={String(m.v)} onClick={() => setForm(f => ({ ...f, autoCalc: m.v }))}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium ${form.autoCalc === m.v ? 'bg-brand-500 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>{m.l}</button>
+              ))}
             </div>
-          ))}
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div><label className="block text-[10px] text-gray-400 mb-0.5">Periodo</label>
+              <input type="month" value={form.period} onChange={set('period')} className={inputCls} /></div>
+            <div className="flex-1 min-w-[150px]"><label className="block text-[10px] text-gray-400 mb-0.5">Concepto *</label>
+              <input value={form.concept} onChange={set('concept')} placeholder="Ej: Consumo datos" className={inputCls + ' w-full'} /></div>
+            <div className="w-36"><label className="block text-[10px] text-gray-400 mb-0.5">SIM / lote</label>
+              <input value={form.simLabel} onChange={set('simLabel')} placeholder="ICCID o lote" className={inputCls + ' w-full'} /></div>
+            <div className="w-24"><label className="block text-[10px] text-gray-400 mb-0.5">Tarjetas</label>
+              <input type="number" value={form.cardsCount} onChange={set('cardsCount')} className={inputCls + ' w-full'} /></div>
+            {form.autoCalc ? (
+              <>
+                <div className="w-28"><label className="block text-[10px] text-gray-400 mb-0.5">MB usados *</label>
+                  <input type="number" step="0.01" value={form.mbUsed} onChange={set('mbUsed')} className={inputCls + ' w-full'} /></div>
+                <div className="w-24"><label className="block text-[10px] text-gray-400 mb-0.5">$/MB prov.</label>
+                  <input type="number" step="0.0001" value={form.costPerMB} onChange={set('costPerMB')} className={inputCls + ' w-full'} /></div>
+                <div className="w-24"><label className="block text-[10px] text-gray-400 mb-0.5">$/MB cliente</label>
+                  <input type="number" step="0.0001" value={form.salePerMB} onChange={set('salePerMB')} className={inputCls + ' w-full'} /></div>
+                <div className="w-24"><label className="block text-[10px] text-gray-400 mb-0.5">Fijo/SIM prov.</label>
+                  <input type="number" step="0.01" value={form.fixedCostPerSim} onChange={set('fixedCostPerSim')} className={inputCls + ' w-full'} /></div>
+                <div className="w-24"><label className="block text-[10px] text-gray-400 mb-0.5">Fijo/SIM cliente</label>
+                  <input type="number" step="0.01" value={form.fixedSalePerSim} onChange={set('fixedSalePerSim')} className={inputCls + ' w-full'} /></div>
+              </>
+            ) : (
+              <>
+                <div className="w-32"><label className="block text-[10px] text-gray-400 mb-0.5">$ a {partnerName} *</label>
+                  <input type="number" step="0.01" value={form.amountToPartner} onChange={set('amountToPartner')} className={inputCls + ' w-full'} /></div>
+                <div className="w-32"><label className="block text-[10px] text-gray-400 mb-0.5">$ cobrado</label>
+                  <input type="number" step="0.01" value={form.amountFromClient} onChange={set('amountFromClient')} className={inputCls + ' w-full'} /></div>
+              </>
+            )}
+            <div className="min-w-[150px]"><label className="block text-[10px] text-gray-400 mb-0.5">Contrato</label>
+              <select value={form.dealId} onChange={set('dealId')} className={inputCls + ' w-full'}>
+                <option value="">Sin vincular</option>
+                {(dataDeals.length ? dataDeals : deals).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select></div>
+          </div>
+          <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
+            <p className="text-xs text-gray-500">
+              A {partnerName}: <span className="font-semibold text-red-600">{money(calcCost)}</span> ·
+              Cobro cliente: <span className="font-semibold text-gray-900">{money(calcSale)}</span> ·
+              Margen: <span className={`font-semibold ${calcSale - calcCost >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{money(calcSale - calcCost)}</span>
+            </p>
+            <div className="flex gap-2">
+              {editingId && <button onClick={() => { setEditingId(null); setForm(EMPTY_DATA(settings)) }} className="border border-gray-200 text-gray-600 text-sm px-3 py-2 rounded-lg">Cancelar</button>}
+              <button onClick={() => save.mutate()} disabled={!form.concept.trim() || (form.autoCalc ? form.mbUsed === '' : form.amountToPartner === '') || save.isPending}
+                className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-40">
+                {save.isPending ? '...' : editingId ? 'Guardar cambios' : 'Registrar'}
+              </button>
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Resumen por mes */}
+      {byPeriod.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+              <th className="px-4 py-2.5 font-medium">Mes</th><th className="px-3 py-2.5 font-medium text-right">Registros</th><th className="px-3 py-2.5 font-medium text-right">MB</th>
+              <th className="px-3 py-2.5 font-medium text-right">A {partnerName}</th><th className="px-3 py-2.5 font-medium text-right">Cobrado</th><th className="px-4 py-2.5 font-medium text-right">Margen</th>
+            </tr></thead>
+            <tbody className="divide-y divide-gray-50">
+              {byPeriod.map(([p, v]) => (
+                <tr key={p}><td className="px-4 py-2 font-mono text-xs">{p}</td><td className="px-3 py-2 text-right text-gray-500">{v.n}</td>
+                  <td className="px-3 py-2 text-right">{v.mb.toLocaleString('es-MX')}</td><td className="px-3 py-2 text-right text-red-600">{money(v.cost)}</td>
+                  <td className="px-3 py-2 text-right">{money(v.sale)}</td><td className={`px-4 py-2 text-right font-medium ${v.sale - v.cost >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{money(v.sale - v.cost)}</td></tr>
+              ))}
+              <tr className="bg-gray-50 font-semibold"><td className="px-4 py-2 text-xs">TOTAL</td><td className="px-3 py-2 text-right">{charges.length}</td>
+                <td className="px-3 py-2 text-right">{totalMB.toLocaleString('es-MX')}</td><td className="px-3 py-2 text-right text-red-600">{money(totalOwed)}</td>
+                <td className="px-3 py-2 text-right">{money(totalBilled)}</td><td className={`px-4 py-2 text-right ${totalBilled - totalOwed >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{money(totalBilled - totalOwed)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Detalle */}
+      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50">
+        {isLoading && <p className="text-center text-gray-400 text-sm py-8">Cargando...</p>}
+        {!isLoading && charges.length === 0 && <p className="text-center text-gray-400 text-sm py-10">Sin consumo de datos registrado</p>}
+        {charges.map(c => (
+          <div key={c.id} className="flex items-center gap-3 px-4 py-3">
+            <span className="text-xs font-mono bg-gray-100 text-gray-600 rounded px-2 py-1 flex-shrink-0">{c.period}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-gray-900">{c.concept}{c.simLabel ? <span className="text-gray-400"> · {c.simLabel}</span> : ''}</p>
+              <p className="text-xs text-gray-400">
+                {c.mbUsed ? `${c.mbUsed.toLocaleString('es-MX')} MB${c.costPerMB ? ` @ $${c.costPerMB}/MB` : ''} · ` : ''}
+                {c.cardsCount ? `${c.cardsCount} tarjetas · ` : ''}
+                {c.deal ? `${c.deal.name} · ` : ''}
+                {c.amountFromClient ? `cobrado ${money(c.amountFromClient)} · ` : ''}
+                {c.autoCalc ? 'calculado' : 'monto directo'} · por {c.createdBy?.name}
+              </p>
+            </div>
+            <span className="font-semibold text-red-600 whitespace-nowrap">−{money(c.amountToPartner)}</span>
+            {!isClosed && <button onClick={() => startEdit(c)} className="text-gray-300 hover:text-brand-600" title="Corregir"><Pencil size={14} /></button>}
+            {isSuper && !isClosed && (
+              <button onClick={() => { if (confirm('¿Eliminar este registro?')) remove.mutate(c.id) }}
+                className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )
 }
 
 // ============ Ajustes ============
-function SettingsModal({ settings, onClose }) {
+function SettingsModal({ settings, years, onClose }) {
   const qc = useQueryClient()
   const [form, setForm] = useState({
     partnerName: settings.partnerName,
-    defaultFx: settings.defaultFx,
-    defaultIsr: settings.defaultIsr,
-    defaultPartnerRate: settings.defaultPartnerRate,
-    defaultIva: settings.defaultIva
+    defaultFx: settings.defaultFx, defaultIsr: settings.defaultIsr, defaultPartnerRate: settings.defaultPartnerRate, defaultIva: settings.defaultIva,
+    dataCostPerMB: settings.dataCostPerMB ?? 0, dataSalePerMB: settings.dataSalePerMB ?? 0,
+    dataFixedCostPerSim: settings.dataFixedCostPerSim ?? 0, dataFixedSalePerSim: settings.dataFixedSalePerSim ?? 0
   })
+  const [closed, setClosed] = useState((settings.closedYears || '').split(',').map(y => parseInt(y)).filter(Boolean))
   const save = useMutation({
-    mutationFn: () => api.patch('/partners/settings', form),
+    mutationFn: () => api.patch('/partners/settings', { ...form, closedYears: closed }),
     onSuccess: () => { qc.invalidateQueries(['partners-summary']); onClose() },
     onError: (e) => alert(e.response?.data?.error || 'Error')
   })
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+  const toggleYear = (y) => setClosed(c => c.includes(y) ? c.filter(x => x !== y) : [...c, y])
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm p-5">
+      <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold">Ajustes de la sociedad</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
@@ -788,7 +892,34 @@ function SettingsModal({ settings, onClose }) {
             <div><label className="block text-xs text-gray-500 mb-1">IVA %</label>
               <input type="number" step="0.1" value={form.defaultIva} onChange={set('defaultIva')} className={inputCls} /></div>
           </div>
-          <p className="text-[10px] text-gray-400">Los valores por defecto aplican a contratos nuevos; cada contrato puede ajustarse individualmente.</p>
+
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">📶 Tarifas de datos (SIM)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block text-xs text-gray-500 mb-1">$/MB proveedor</label>
+                <input type="number" step="0.0001" value={form.dataCostPerMB} onChange={set('dataCostPerMB')} className={inputCls} /></div>
+              <div><label className="block text-xs text-gray-500 mb-1">$/MB al cliente</label>
+                <input type="number" step="0.0001" value={form.dataSalePerMB} onChange={set('dataSalePerMB')} className={inputCls} /></div>
+              <div><label className="block text-xs text-gray-500 mb-1">Fijo mensual/SIM proveedor</label>
+                <input type="number" step="0.01" value={form.dataFixedCostPerSim} onChange={set('dataFixedCostPerSim')} className={inputCls} /></div>
+              <div><label className="block text-xs text-gray-500 mb-1">Fijo mensual/SIM cliente</label>
+                <input type="number" step="0.01" value={form.dataFixedSalePerSim} onChange={set('dataFixedSalePerSim')} className={inputCls} /></div>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">🔒 Cierre de ejercicios</p>
+            <p className="text-[10px] text-gray-400 mb-2">Un ejercicio cerrado no admite altas, cambios ni bajas de contratos, pagos o datos. Puedes reabrirlo cuando quieras.</p>
+            <div className="flex flex-wrap gap-2">
+              {years.map(y => (
+                <button key={y} onClick={() => toggleYear(y)}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border ${closed.includes(y) ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                  {closed.includes(y) ? <Lock size={11} /> : null} {y} {closed.includes(y) ? '· cerrado' : '· abierto'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-[10px] text-gray-400">Los valores por defecto aplican a registros nuevos; cada contrato o registro puede ajustarse individualmente.</p>
         </div>
         <button onClick={() => save.mutate()} disabled={save.isPending}
           className="w-full mt-4 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium py-2.5 rounded-lg disabled:opacity-40">

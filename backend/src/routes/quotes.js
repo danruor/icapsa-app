@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
+import { parseDate } from '../lib/validate.js'
 import { authenticate } from '../middleware/auth.js'
 import { nextFolio } from '../lib/folio.js'
 import { logActivity } from '../lib/events.js'
@@ -150,7 +151,7 @@ router.post('/', async (req, res) => {
           data: {
             folio, clientName, clientEmail, clientPhone, notes,
             taxRate: taxRate !== undefined ? parseFloat(taxRate) : 16,
-            validUntil: validUntil ? new Date(validUntil) : null,
+            validUntil: parseDate(validUntil),
             createdById: req.user.id,
             projectId: projectId || null,
             items: {
@@ -199,7 +200,7 @@ router.patch('/:id', async (req, res) => {
         ...(taxRate !== undefined && { taxRate: parseFloat(taxRate) }),
         ...(status !== undefined && { status }),
         ...(projectId !== undefined && { projectId: projectId || null }),
-        ...(validUntil !== undefined && { validUntil: validUntil ? new Date(validUntil) : null }),
+        ...(validUntil !== undefined && { validUntil: parseDate(validUntil) }),
         ...(items && {
           items: {
             create: items.map(it => ({

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
+import { parseDate } from '../lib/validate.js'
 import { authenticate, requireTab } from '../middleware/auth.js'
 
 const router = Router()
@@ -31,7 +32,7 @@ router.get('/', async (req, res) => {
         project: { deletedAt: null },
         projectId: { in: projectIds },
         dueDate: { not: null },
-        ...(start && end && { dueDate: { gte: new Date(start), lte: new Date(end) } })
+        ...(parseDate(start) && parseDate(end) && { dueDate: { gte: parseDate(start), lte: parseDate(end) } })
       },
       include: {
         project: { select: { id: true, name: true, color: true } },

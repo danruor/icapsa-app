@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticate, requireTab } from '../middleware/auth.js'
+import { parseDate } from '../lib/validate.js'
+import { authenticate, requireTab, requireAdmin } from '../middleware/auth.js'
 import { logActivity, notifyLowStock } from '../lib/events.js'
 import { nextFolio } from '../lib/folio.js'
 
@@ -94,7 +95,7 @@ router.post('/', async (req, res) => {
           data: {
             folio, recipient, notes,
             signature: signature || null,
-            date: date ? new Date(date) : new Date(),
+            date: (parseDate(date) || new Date()),
             projectId: projectId || null,
             quoteId: quoteId || null,
             createdById: req.user.id
@@ -151,7 +152,7 @@ router.post('/', async (req, res) => {
 })
 
 // DELETE /api/deliveries/:id - elimina entrega y regresa el stock
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     const delivery = await prisma.delivery.findUnique({
       where: { id: req.params.id },

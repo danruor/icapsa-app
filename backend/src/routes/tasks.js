@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
+import { parseDate } from '../lib/validate.js'
 import { authenticate, requireTab } from '../middleware/auth.js'
 import { notify, logActivity } from '../lib/events.js'
 
@@ -46,7 +47,7 @@ router.post('/', async (req, res) => {
         projectId,
         assigneeId: assigneeId || null,
         priority: priority || 'MEDIUM',
-        dueDate: dueDate ? new Date(dueDate) : null,
+        dueDate: parseDate(dueDate),
         creatorId: req.user.id
       },
       include: {
@@ -93,7 +94,7 @@ router.patch('/:id', async (req, res) => {
         ...(status !== undefined && { status }),
         ...(priority !== undefined && { priority }),
         ...(assigneeId !== undefined && { assigneeId: assigneeId || null }),
-        ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null })
+        ...(dueDate !== undefined && { dueDate: parseDate(dueDate) })
       },
       include: {
         assignee: { select: { id: true, name: true } },

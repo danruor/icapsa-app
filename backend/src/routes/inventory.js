@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticate, requireTab } from '../middleware/auth.js'
+import { authenticate, requireTab, requireAdmin } from '../middleware/auth.js'
 import { logActivity, notifyLowStock } from '../lib/events.js'
 
 const router = Router()
@@ -122,7 +122,7 @@ router.patch('/:id', async (req, res) => {
 })
 
 // DELETE /api/inventory/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     await prisma.inventoryItem.delete({ where: { id: req.params.id } })
     res.json({ message: 'Artículo eliminado' })

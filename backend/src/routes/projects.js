@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
+import { parseDate } from '../lib/validate.js'
 import { authenticate, requireTab, requireAdmin } from '../middleware/auth.js'
 import { logActivity, notify } from '../lib/events.js'
 import { sendPushToUsers } from '../lib/push.js'
@@ -55,8 +56,8 @@ router.post('/', async (req, res) => {
     const project = await prisma.project.create({
       data: {
         name, description, address, client,
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
+        startDate: parseDate(startDate),
+        endDate: parseDate(endDate),
         latitude: latitude !== undefined && latitude !== null ? parseFloat(latitude) : null,
         longitude: longitude !== undefined && longitude !== null ? parseFloat(longitude) : null,
         budget: budget !== undefined && budget !== null && budget !== '' ? parseFloat(budget) : null,
@@ -127,8 +128,8 @@ router.patch('/:id', requireAdmin, async (req, res) => {
         ...(longitude !== undefined && { longitude: longitude !== null ? parseFloat(longitude) : null }),
         ...(budget !== undefined && { budget: budget !== null && budget !== '' ? parseFloat(budget) : null }),
         ...(color && { color }),
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null
+        startDate: parseDate(startDate),
+        endDate: parseDate(endDate)
       }
     })
     res.json(project)

@@ -4,9 +4,10 @@ import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid, ReferenceLine
 } from 'recharts'
-import { Plus, X, Pencil, Trash2, BookOpen, TrendingUp, Target, Wrench } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, BookOpen, TrendingUp, Target, Wrench, MapPin } from 'lucide-react'
 import { useAuthStore } from '../lib/authStore'
 import { useSort, SortTh } from '../components/sortable'
+import { CFE_DIVISIONS, MX_STATES } from '../lib/mx'
 import { brandForEmail } from '../lib/brand'
 import api from '../lib/api'
 
@@ -80,7 +81,10 @@ export function ConceptsView({ settings, isSuper }) {
               <tr key={c.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2.5">
                   <button onClick={() => setEdit(c)} className="font-medium text-gray-900 hover:text-brand-600 text-left">{c.name}</button>
-                  {c.description && <div className="text-xs text-gray-400 truncate max-w-[240px]">{c.description}</div>}
+                  <div className="text-xs text-gray-400 truncate max-w-[260px] flex items-center gap-1.5">
+                    {c.description}
+                    {c.prices?.length > 0 && <span className="inline-flex items-center gap-0.5 text-sky-600 flex-shrink-0"><MapPin size={10} /> {c.prices.length} precio{c.prices.length > 1 ? 's' : ''} por zona</span>}
+                  </div>
                 </td>
                 <td className="px-3 py-2.5">
                   <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium ${c.costingMode === 'BREAKDOWN' ? 'bg-purple-50 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>
@@ -131,6 +135,11 @@ function ConceptModal({ concept, settings, onClose }) {
       : [{ label: 'Manufactura', amount: '', currency: 'USD' }, { label: 'Componentes', amount: '', currency: 'USD' }, { label: 'Software', amount: '', currency: 'USD' }]
   )
 
+  const [prices, setPrices] = useState(
+    concept?.prices?.map(p => ({ scopeType: p.scopeType, scope: p.scope, saleUnit: p.saleUnit, saleCurrency: p.saleCurrency, notes: p.notes || '' })) || []
+  )
+  const setPrice = (i, k) => (e) => setPrices(arr => arr.map((p, idx) => idx === i ? { ...p, [k]: e.target.value, ...(k === 'scopeType' && { scope: '' }) } : p))
+
   const { data: history = [] } = useQuery({
     queryKey: ['concept-history', concept?.id],
     queryFn: () => api.get(`/partners/concepts/${concept.id}/history`).then(r => r.data),
@@ -150,7 +159,8 @@ function ConceptModal({ concept, settings, onClose }) {
         ...form,
         costUnit: form.costingMode === 'BREAKDOWN' ? 0 : (form.costUnit === '' ? 0 : form.costUnit),
         saleUnit: form.saleUnit === '' ? 0 : form.saleUnit,
-        costParts: form.costingMode === 'BREAKDOWN' ? parts.map(p => ({ ...p, amount: p.amount === '' ? 0 : p.amount })) : []
+        costParts: form.costingMode === 'BREAKDOWN' ? parts.map(p => ({ ...p, amount: p.amount === '' ? 0 : p.amount })) : [],
+        prices: prices.map(p => ({ ...p, saleUnit: p.saleUnit === '' ? 0 : p.saleUnit }))
       }
       return concept ? api.patch(`/partners/concepts/${concept.id}`, payload) : api.post('/partners/concepts', payload)
     },
@@ -161,7 +171,7 @@ function ConceptModal({ concept, settings, onClose }) {
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
   const setPart = (i, k) => (e) => setParts(arr => arr.map((p, idx) => idx === i ? { ...p, [k]: e.target.value } : p))
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
-  const canSave = form.name.trim() && (form.costingMode !== 'BREAKDOWN' || parts.every(p => p.label.trim()))
+  const canSave = form.name.trim() && (form.costingMode !== 'BREAKDOWN' || parts.every(p => p.label.trim())) && prices.every(p => p.scope.trim())
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -247,6 +257,39 @@ function ConceptModal({ concept, settings, onClose }) {
           </div>
         </div>
 
+        {/* Precios por división / estado / cliente */}
+        <div className="mt-4 bg-sky-50/50 border border-sky-100 rounded-xl p-3">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-semibold text-sky-800 flex items-center gap-1"><MapPin size={12} /> Precio de venta por zona o cliente</p>
+            <button onClick={() => setPrices(arr => [...arr, { scopeType: 'CFE_DIVISION', scope: '', saleUnit: '', saleCurrency: form.saleCurrency, notes: '' }])}
+              className="text-xs font-medium text-sky-700 hover:text-sky-900 flex items-center gap-1"><Plus size={12} /> Agregar precio</button>
+          </div>
+          <p className="text-[10px] text-sky-700 mb-2">El mismo producto con distinto precio según la división CFE, el estado o la constructora. Al usarlo en un contrato, se aplica solo el que corresponda (cliente &gt; división/estado &gt; base).</p>
+          {prices.length === 0 && <p className="text-[10px] text-gray-400">Sin precios especiales — se usa el precio base en todos los contratos.</p>}
+          <div className="space-y-1.5">
+            {prices.map((p, i) => (
+              <div key={i} className="flex flex-wrap gap-1.5 items-center">
+                <select value={p.scopeType} onChange={setPrice(i, 'scopeType')} className="border border-gray-200 rounded px-1.5 py-1.5 text-xs focus:outline-none">
+                  <option value="CFE_DIVISION">División CFE</option><option value="STATE">Estado</option><option value="CLIENT">Cliente</option>
+                </select>
+                {p.scopeType === 'CLIENT' ? (
+                  <input value={p.scope} onChange={setPrice(i, 'scope')} placeholder="Nombre del cliente"
+                    className="flex-1 min-w-[140px] border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-brand-500" />
+                ) : (
+                  <select value={p.scope} onChange={setPrice(i, 'scope')} className="flex-1 min-w-[140px] border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none">
+                    <option value="">Selecciona...</option>
+                    {(p.scopeType === 'CFE_DIVISION' ? CFE_DIVISIONS : MX_STATES).map(x => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                )}
+                <input type="number" step="0.01" value={p.saleUnit} onChange={setPrice(i, 'saleUnit')} placeholder="Precio"
+                  className="w-28 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-brand-500" />
+                <select value={p.saleCurrency} onChange={setPrice(i, 'saleCurrency')} className="border border-gray-200 rounded px-1 py-1.5 text-xs focus:outline-none"><option>USD</option><option>MXN</option></select>
+                <button onClick={() => setPrices(arr => arr.filter((_, idx) => idx !== i))} className="text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Historial de precios reales */}
         {concept && history.length > 0 && (
           <div className="mt-4">
@@ -286,99 +329,135 @@ function ConceptModal({ concept, settings, onClose }) {
 }
 
 // ================= ANÁLISIS =================
-export function AnalyticsView() {
+export function AnalyticsView({ year }) {
   const brandHex = useBrandHex()
   const [gran, setGran] = useState('month')
   const { data, isLoading } = useQuery({
-    queryKey: ['partners-analytics', gran],
-    queryFn: () => api.get(`/partners/analytics?granularity=${gran}`).then(r => r.data)
+    queryKey: ['partners-analytics', gran, year],
+    queryFn: () => api.get(`/partners/analytics?granularity=${gran}${year === 'all' ? '' : `&year=${year}`}`).then(r => r.data)
   })
 
   if (isLoading) return <p className="text-center text-gray-400 py-16">Calculando análisis...</p>
-  if (!data || data.byPeriod.length === 0)
-    return <p className="text-center text-gray-400 py-16">Aún no hay contratos que analizar — registra el primero 📊</p>
+  if (!data || (data.byPeriod.length === 0 && data.dataByPeriod.length === 0))
+    return <p className="text-center text-gray-400 py-16">Aún no hay contratos en este ejercicio que analizar 📊</p>
 
   const topClient = data.byClient[0]
   const topDivision = data.byDivision[0]
+  const topConcept = data.topConcepts[0]
   const totalSale = data.byType.reduce((s, t) => s + t.sale, 0)
   const totalUtility = data.byType.reduce((s, t) => s + t.utility, 0)
+  const totalCount = data.byType.reduce((s, t) => s + t.count, 0)
   const marginPct = totalSale > 0 ? (totalUtility / totalSale) * 100 : 0
+  const marginColor = (m) => m >= 30 ? '#22C55E' : m >= 10 ? '#EF9F27' : '#DC2626'
 
   return (
     <div className="space-y-4">
       {/* Insights rápidos */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">🏆 Mejor cliente (venta)</p>
-          <p className="font-semibold text-gray-900">{topClient?.client || '—'}</p>
-          <p className="text-xs text-gray-400">{topClient ? `${money(topClient.sale)} · utilidad ${money(topClient.utility)}` : ''}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">⚡ División CFE líder</p>
-          <p className="font-semibold text-gray-900">{topDivision?.division || 'Sin contratos CFE'}</p>
-          <p className="text-xs text-gray-400">{topDivision ? `${money(topDivision.sale)} en venta` : ''}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">📈 Margen bruto global</p>
-          <p className={`font-semibold ${marginPct >= 30 ? 'text-emerald-600' : marginPct >= 10 ? 'text-amber-600' : 'text-red-600'}`}>{marginPct.toFixed(1)}%</p>
-          <p className="text-xs text-gray-400">Utilidad {money(totalUtility)} / Venta {money(totalSale)}</p>
-        </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <Insight label="🏆 Mejor cliente" value={topClient?.client || '—'} sub={topClient ? money(topClient.sale) : ''} />
+        <Insight label="⚡ División líder" value={topDivision?.division || 'Sin CFE'} sub={topDivision ? money(topDivision.sale) : ''} />
+        <Insight label="🥇 Concepto más rentable" value={topConcept?.name || '—'} sub={topConcept ? `utilidad ${money(topConcept.utility)}` : ''} />
+        <Insight label="📈 Margen bruto" value={`${marginPct.toFixed(1)}%`} sub={`${money(totalUtility)} de ${money(totalSale)}`} color={marginColor(marginPct)} />
+        <Insight label="🎫 Ticket promedio" value={money(totalCount ? totalSale / totalCount : 0)} sub={`${totalCount} contratos`} />
       </div>
 
       {/* Tendencia temporal */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold text-gray-700">Tendencia de venta, costo y utilidad neta</p>
-          <div className="flex gap-1">
-            {[{ k: 'day', l: 'Día' }, { k: 'month', l: 'Mes' }, { k: 'year', l: 'Año' }].map(g => (
-              <button key={g.k} onClick={() => setGran(g.k)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium ${gran === g.k ? 'bg-brand-500 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
-                {g.l}
-              </button>
-            ))}
+      {data.byPeriod.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-gray-700">Tendencia de venta, costo y utilidad neta</p>
+            <div className="flex gap-1">
+              {[{ k: 'day', l: 'Día' }, { k: 'month', l: 'Mes' }, { k: 'year', l: 'Año' }].map(g => (
+                <button key={g.k} onClick={() => setGran(g.k)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium ${gran === g.k ? 'bg-brand-500 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>{g.l}</button>
+              ))}
+            </div>
+          </div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data.byPeriod}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={moneyShort} width={56} />
+                <Tooltip formatter={(v) => money(v)} />
+                <Legend />
+                <Area type="monotone" dataKey="sale" name="Venta" stroke={brandHex} fill={brandHex} fillOpacity={0.15} strokeWidth={2} />
+                <Area type="monotone" dataKey="cost" name="Costo" stroke="#9CA3AF" fill="#9CA3AF" fillOpacity={0.1} strokeWidth={2} />
+                <Area type="monotone" dataKey="net" name="Utilidad neta" stroke="#EF9F27" fill="#EF9F27" fillOpacity={0.15} strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data.byPeriod}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={moneyShort} width={56} />
-              <Tooltip formatter={(v) => money(v)} />
-              <Legend />
-              <Area type="monotone" dataKey="sale" name="Venta" stroke={brandHex} fill={brandHex} fillOpacity={0.15} strokeWidth={2} />
-              <Area type="monotone" dataKey="cost" name="Costo" stroke="#9CA3AF" fill="#9CA3AF" fillOpacity={0.1} strokeWidth={2} />
-              <Area type="monotone" dataKey="net" name="Utilidad neta" stroke="#EF9F27" fill="#EF9F27" fillOpacity={0.15} strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Top conceptos por utilidad */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-sm font-semibold text-gray-700 mb-1">Conceptos más rentables</p>
+          <p className="text-[10px] text-gray-400 mb-3">Utilidad generada por tarjeta/concepto en el periodo — dónde está el dinero</p>
+          {data.topConcepts.length === 0 ? <p className="text-center text-gray-400 text-sm py-16">Sin datos</p> : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.topConcepts.slice(0, 8)} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={moneyShort} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={120} />
+                  <Tooltip formatter={(v, n) => n === 'Margen %' ? `${v.toFixed(1)}%` : money(v)} />
+                  <Legend />
+                  <Bar dataKey="utility" name="Utilidad" fill={brandHex} radius={[0, 3, 3, 0]} />
+                  <Bar dataKey="sale" name="Venta" fill="#CBD5E1" radius={[0, 3, 3, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* Margen por contrato */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-sm font-semibold text-gray-700 mb-1">Margen por contrato</p>
+          <p className="text-[10px] text-gray-400 mb-3">De menor a mayor margen — los rojos merecen revisión de precio o costo</p>
+          {data.dealMargins.length === 0 ? <p className="text-center text-gray-400 text-sm py-16">Sin datos</p> : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.dealMargins.slice(0, 10)} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={130} tickFormatter={(v) => v.length > 22 ? v.slice(0, 22) + '…' : v} />
+                  <Tooltip formatter={(v) => `${v.toFixed(1)}%`} />
+                  <ReferenceLine x={30} stroke="#22C55E" strokeDasharray="4 4" label={{ value: '30%', fontSize: 9, fill: '#22C55E' }} />
+                  <Bar dataKey="marginPct" name="Margen" radius={[0, 3, 3, 0]}>
+                    {data.dealMargins.slice(0, 10).map((d, i) => <Cell key={i} fill={marginColor(d.marginPct)} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
         {/* Por cliente/constructora */}
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-sm font-semibold text-gray-700 mb-3">Por cliente / constructora</p>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.byClient.slice(0, 8)} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={moneyShort} />
-                <YAxis type="category" dataKey="client" tick={{ fontSize: 10 }} width={90} />
-                <Tooltip formatter={(v) => money(v)} />
-                <Legend />
-                <Bar dataKey="sale" name="Venta" fill={brandHex} radius={[0, 3, 3, 0]} />
-                <Bar dataKey="utility" name="Utilidad" fill="#EF9F27" radius={[0, 3, 3, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {data.byClient.length === 0 ? <p className="text-center text-gray-400 text-sm py-16">Sin datos</p> : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.byClient.slice(0, 8)} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={moneyShort} />
+                  <YAxis type="category" dataKey="client" tick={{ fontSize: 10 }} width={90} />
+                  <Tooltip formatter={(v) => money(v)} />
+                  <Legend />
+                  <Bar dataKey="sale" name="Venta" fill={brandHex} radius={[0, 3, 3, 0]} />
+                  <Bar dataKey="utility" name="Utilidad" fill="#EF9F27" radius={[0, 3, 3, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
 
         {/* Por división CFE */}
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-sm font-semibold text-gray-700 mb-3">Por división CFE</p>
-          {data.byDivision.length === 0 ? (
-            <p className="text-center text-gray-400 text-sm py-16">Sin contratos CFE con división</p>
-          ) : (
+          {data.byDivision.length === 0 ? <p className="text-center text-gray-400 text-sm py-16">Sin contratos CFE con división</p> : (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.byDivision.slice(0, 8)} layout="vertical">
@@ -394,36 +473,89 @@ export function AnalyticsView() {
             </div>
           )}
         </div>
-      </div>
 
-      {/* CFE vs Privados */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <p className="text-sm font-semibold text-gray-700 mb-3">CFE vs Privados</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-          <div className="h-52">
+        {/* Año vs año */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-sm font-semibold text-gray-700 mb-1">Año vs año</p>
+          <p className="text-[10px] text-gray-400 mb-3">Comparativa histórica completa, independiente del ejercicio seleccionado</p>
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={data.byType} dataKey="sale" nameKey="type" innerRadius={45} outerRadius={75} paddingAngle={3}>
-                  {data.byType.map((_, i) => <Cell key={i} fill={i === 0 ? '#22C55E' : brandHex} />)}
-                </Pie>
+              <BarChart data={data.byYear}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={moneyShort} width={56} />
                 <Tooltip formatter={(v) => money(v)} />
                 <Legend />
-              </PieChart>
+                <Bar dataKey="sale" name="Venta" fill={brandHex} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="net" name="Neta" fill="#EF9F27" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="partner" name="Comisión socio" fill="#DC2626" radius={[3, 3, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="space-y-2 text-sm">
-            {data.byType.map((t, i) => (
-              <div key={t.type} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                <span className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: i === 0 ? '#22C55E' : brandHex }} />
-                  {t.type} <span className="text-xs text-gray-400">({t.count} contratos)</span>
-                </span>
-                <span className="font-medium">{money(t.sale)}</span>
-              </div>
-            ))}
+        </div>
+
+        {/* CFE vs Privados */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-sm font-semibold text-gray-700 mb-3">CFE vs Privados</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+            <div className="h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={data.byType} dataKey="sale" nameKey="type" innerRadius={45} outerRadius={75} paddingAngle={3}>
+                    {data.byType.map((_, i) => <Cell key={i} fill={i === 0 ? '#22C55E' : brandHex} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => money(v)} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-2 text-sm">
+              {data.byType.map((t, i) => (
+                <div key={t.type} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                  <span className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: i === 0 ? '#22C55E' : brandHex }} />
+                    {t.type} <span className="text-xs text-gray-400">({t.count})</span>
+                  </span>
+                  <span className="font-medium">{money(t.sale)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Consumo de datos */}
+      {data.dataByPeriod.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-sm font-semibold text-gray-700 mb-1">📶 Datos (SIM): consumo y margen mensual</p>
+          <p className="text-[10px] text-gray-400 mb-3">MB consumidos vs lo pagado al proveedor y lo cobrado al cliente</p>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.dataByPeriod}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="mb" orientation="left" tick={{ fontSize: 10 }} width={48} />
+                <YAxis yAxisId="money" orientation="right" tick={{ fontSize: 10 }} tickFormatter={moneyShort} width={56} />
+                <Tooltip formatter={(v, n) => n === 'MB' ? `${v.toLocaleString('es-MX')} MB` : money(v)} />
+                <Legend />
+                <Bar yAxisId="mb" dataKey="mb" name="MB" fill="#0EA5E9" fillOpacity={0.35} radius={[3, 3, 0, 0]} />
+                <Bar yAxisId="money" dataKey="cost" name="Pagado al proveedor" fill="#DC2626" radius={[3, 3, 0, 0]} />
+                <Bar yAxisId="money" dataKey="sale" name="Cobrado al cliente" fill={brandHex} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Insight({ label, value, sub, color }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-3">
+      <p className="text-[11px] text-gray-500 mb-0.5">{label}</p>
+      <p className="font-semibold text-gray-900 truncate text-sm" style={color ? { color } : undefined} title={value}>{value}</p>
+      {sub && <p className="text-[10px] text-gray-400 truncate">{sub}</p>}
     </div>
   )
 }

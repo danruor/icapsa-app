@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
+import { parseDate } from '../lib/validate.js'
 import { authenticate, requireTab } from '../middleware/auth.js'
 import { notify } from '../lib/events.js'
 
@@ -166,7 +167,7 @@ router.post('/cards', async (req, res) => {
         columnId,
         position: (max._max.position ?? -1) + 1,
         priority: priority || null,
-        dueDate: dueDate ? new Date(dueDate) : null,
+        dueDate: parseDate(dueDate),
         assigneeId: assigneeId || null,
         projectId: projectId || null,
         quoteId: quoteId || null,
@@ -197,7 +198,7 @@ router.patch('/cards/:id', async (req, res) => {
         ...(description !== undefined && { description: description || null }),
         ...(assigneeId !== undefined && { assigneeId: assigneeId || null }),
         ...(priority !== undefined && { priority: priority || null }),
-        ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
+        ...(dueDate !== undefined && { dueDate: parseDate(dueDate) }),
         ...(projectId !== undefined && { projectId: projectId || null }),
         ...(quoteId !== undefined && { quoteId: quoteId || null }),
         ...(purchaseOrderId !== undefined && { purchaseOrderId: purchaseOrderId || null }),

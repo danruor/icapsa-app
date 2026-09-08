@@ -475,6 +475,13 @@ model PartnerSettings {
   defaultIsr         Float  @default(30)    // % ISR
   defaultPartnerRate Float  @default(35)    // % del socio sobre utilidad neta
   defaultIva         Float  @default(16)
+  // Tarifas de datos (SIM)
+  dataCostPerMB       Float  @default(0) // lo que cobra el proveedor por MB
+  dataSalePerMB       Float  @default(0) // lo que cobramos al cliente por MB
+  dataFixedCostPerSim Float  @default(0) // cargo fijo mensual por SIM (proveedor)
+  dataFixedSalePerSim Float  @default(0) // cargo fijo mensual por SIM (cliente)
+  // Ejercicios cerrados (CSV de años) — bloquean modificaciones
+  closedYears        String @default("")
 }
 
 model PartnerDeal {
@@ -548,8 +555,16 @@ model PartnerDataCharge {
   concept          String   // "Consumo datos julio", plan, etc.
   cardsCount       Int?
   amountToPartner  Float    // adeudo del mes al proveedor (DELEVSIS)
-  amountFromClient Float?   // opcional: lo cobrado al cliente por datos
+  amountFromClient Float?   // lo cobrado al cliente por datos
   notes            String?
+  // Consumo variable por SIM/lote
+  simLabel         String?  // ICCID, etiqueta o lote
+  mbUsed           Float?   // MB consumidos en el periodo
+  costPerMB        Float?   // tarifas aplicadas (snapshot del momento)
+  salePerMB        Float?
+  fixedCostPerSim  Float?
+  fixedSalePerSim  Float?
+  autoCalc         Boolean  @default(false) // montos calculados desde MB
   createdAt        DateTime @default(now())
 
   createdById String
@@ -577,6 +592,21 @@ model PartnerConcept {
   costParts        PartnerConceptCost[]
   dealItems        PartnerDealItem[]
   competitorPrices PartnerCompetitorPrice[]
+  prices           PartnerConceptPrice[]
+}
+
+// Precio de venta del concepto según división CFE, estado o cliente
+model PartnerConceptPrice {
+  id           String   @id @default(cuid())
+  scopeType    String   // CFE_DIVISION | STATE | CLIENT
+  scope        String   // "Jalisco", "Valle de México Centro", "Francisco"...
+  saleUnit     Float
+  saleCurrency String   @default("USD")
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  conceptId String
+  concept   PartnerConcept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
 }
 
 // Partes del costo interno (manufactura, componentes, software...)

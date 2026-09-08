@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { authenticate, requireTab } from '../middleware/auth.js'
+import { parseDate } from '../lib/validate.js'
+import { authenticate, requireTab, requireAdmin } from '../middleware/auth.js'
 import { logActivity } from '../lib/events.js'
 import { nextFolio } from '../lib/folio.js'
 
@@ -73,7 +74,7 @@ router.post('/', async (req, res) => {
         order = await prisma.purchaseOrder.create({
           data: {
             folio, supplier, notes,
-            date: date ? new Date(date) : new Date(),
+            date: (parseDate(date) || new Date()),
             projectId: projectId || null,
             createdById: req.user.id
           }
@@ -151,7 +152,7 @@ router.post('/', async (req, res) => {
 })
 
 // DELETE /api/purchase-orders/:id - elimina OC y revierte el stock
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     const order = await prisma.purchaseOrder.findUnique({
       where: { id: req.params.id },
