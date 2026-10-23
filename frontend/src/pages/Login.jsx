@@ -23,7 +23,7 @@ export default function Login() {
     try {
       const { data } = await api.post('/auth/login', { email, password })
       setAuth(data.user, data.token)
-      navigate('/dashboard')
+      navigate(data.user?.role === 'CLIENT' ? '/portal' : '/dashboard')
     } catch (err) {
       setError(err.response?.data?.error || 'Error al iniciar sesión')
     } finally {

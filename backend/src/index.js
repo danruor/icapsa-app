@@ -20,6 +20,7 @@ import searchRoutes from './routes/search.js'
 import chatRoutes from './routes/chat.js'
 import boardRoutes from './routes/board.js'
 import partnerRoutes from './routes/partners.js'
+import supportRoutes, { runSlaCheck } from './routes/support.js'
 import notesRoutes from './routes/notes.js'
 
 dotenv.config()
@@ -91,6 +92,7 @@ app.use('/api/search',    searchRoutes)
 app.use('/api/chat',      chatRoutes)
 app.use('/api/board',     boardRoutes)
 app.use('/api/partners',  partnerRoutes)
+app.use('/api/support',   supportRoutes)
 app.use('/api/notes',     notesRoutes)
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
@@ -108,16 +110,20 @@ app.use((err, req, res, _next) => {
 
 app.listen(PORT, () => console.log(`API corriendo en puerto ${PORT}`))
 
+// Soporte: aviso automático de tickets con límite de atención vencido
+setTimeout(runSlaCheck, 60 * 1000)
+setInterval(runSlaCheck, 30 * 60 * 1000)
+
 // Backfill idempotente: chat y pendientes ahora son configurables por usuario;
 // los usuarios existentes los conservan activados (el admin puede quitarlos después).
 import('@prisma/client').then(async ({ PrismaClient }) => {
   const p = new PrismaClient()
   try {
-    const users = await p.user.findMany({ select: { id: true, visibleTabs: true } })
+    const users = await p.user.findMany({ where: { role: { not: 'CLIENT' } }, select: { id: true, visibleTabs: true } })
     for (const u of users) {
       const tabs = (u.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean)
       let changed = false
-      for (const t of ['chat', 'board']) if (!tabs.includes(t)) { tabs.push(t); changed = true }
+      for (const t of ['chat', 'board', 'support']) if (!tabs.includes(t)) { tabs.push(t); changed = true }
       if (changed) await p.user.update({ where: { id: u.id }, data: { visibleTabs: tabs.join(',') } })
     }
   } catch (err) {

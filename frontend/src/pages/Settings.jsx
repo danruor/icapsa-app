@@ -8,16 +8,18 @@ const ROLES = [
   { value: 'SUPER_ADMIN', label: 'Super Administrador', desc: 'Control total del sistema' },
   { value: 'ADMIN',       label: 'Administrador',        desc: 'Gestiona usuarios y proyectos' },
   { value: 'MANAGER',     label: 'Gerente',              desc: 'Gestiona proyectos asignados' },
-  { value: 'MEMBER',      label: 'Miembro',              desc: 'Acceso a proyectos asignados' }
+  { value: 'MEMBER',      label: 'Miembro',              desc: 'Acceso a proyectos asignados' },
+  { value: 'CLIENT',      label: 'Cliente',              desc: 'Portal de soporte: solo levanta y sigue sus tickets' }
 ]
 
 const roleBadge = {
   SUPER_ADMIN: 'bg-purple-100 text-purple-700',
   ADMIN:       'bg-blue-100 text-blue-700',
   MANAGER:     'bg-teal-100 text-teal-700',
-  MEMBER:      'bg-gray-100 text-gray-600'
+  MEMBER:      'bg-gray-100 text-gray-600',
+  CLIENT:      'bg-sky-100 text-sky-700'
 }
-const roleLabel = { SUPER_ADMIN: 'Super Admin', ADMIN: 'Admin', MANAGER: 'Gerente', MEMBER: 'Miembro' }
+const roleLabel = { SUPER_ADMIN: 'Super Admin', ADMIN: 'Admin', MANAGER: 'Gerente', MEMBER: 'Miembro', CLIENT: 'Cliente' }
 
 export default function Settings() {
   const qc = useQueryClient()
@@ -26,7 +28,7 @@ export default function Settings() {
 
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar', 'chat', 'board'] })
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', company: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar', 'chat', 'board', 'support'] })
   const [projectModal, setProjectModal] = useState(null)
   const [adminTab, setAdminTab] = useState('users') // user being edited for projects
 
@@ -73,7 +75,7 @@ export default function Settings() {
 
   const openNew = () => {
     setEditing(null)
-    setForm({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar', 'chat', 'board'] })
+    setForm({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', company: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar', 'chat', 'board', 'support'] })
     setShowForm(true)
   }
 
@@ -82,7 +84,7 @@ export default function Settings() {
     setForm({
       name: user.name, email: user.email, password: '', role: user.role,
       visibleTabs: (user.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean),
-      phone: user.phone || '', position: user.position || '',
+      phone: user.phone || '', position: user.position || '', company: user.company || '',
       projectIds: user.projects?.map(p => p.project.id) || []
     })
     setShowForm(true)
@@ -176,6 +178,7 @@ export default function Settings() {
                       <div className="font-medium text-gray-900">{u.name}</div>
                       <div className="text-xs text-gray-400">{u.email}</div>
                       {u.position && <div className="text-xs text-gray-400">{u.position}</div>}
+                      {u.company && <div className="text-xs text-sky-600">🏢 {u.company}</div>}
                     </div>
                   </div>
                 </td>
@@ -261,12 +264,21 @@ export default function Settings() {
                   <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Puesto</label>
-                  <input value={form.position} onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
-                    placeholder="Ej: Ingeniero de campo"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
-                </div>
+                {form.role === 'CLIENT' ? (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Empresa del cliente *</label>
+                    <input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
+                      placeholder="Ej: Constructora Francisco"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Puesto</label>
+                    <input value={form.position} onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
+                      placeholder="Ej: Ingeniero de campo"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -296,8 +308,13 @@ export default function Settings() {
                 </select>
               </div>
 
-              {/* Pestañas visibles: solo aplica a roles no-admin (admins ven todo) */}
-              {!['SUPER_ADMIN', 'ADMIN'].includes(form.role) && (
+              {form.role === 'CLIENT' && (
+                <div className="bg-sky-50 border border-sky-100 rounded-lg px-3 py-2 text-xs text-sky-800">
+                  🎫 Los usuarios <b>Cliente</b> entran a un portal aislado: solo pueden levantar tickets de soporte y seguir su atención (conversación, visitas, adjuntos). No ven ninguna sección interna. Comparten la vista con los demás contactos de su misma empresa.
+                </div>
+              )}
+              {/* Pestañas visibles: solo aplica a roles internos no-admin (admins ven todo) */}
+              {!['SUPER_ADMIN', 'ADMIN', 'CLIENT'].includes(form.role) && (
                 <div>
                   <label className="block text-xs text-gray-500 mb-2">Pestañas visibles para este usuario</label>
                   <div className="border border-gray-200 rounded-lg p-3 space-y-2">
@@ -311,6 +328,7 @@ export default function Settings() {
                       { key: 'projects', label: 'Proyectos', desc: 'obras, tareas, fotos y avance' },
                       { key: 'inventory', label: 'Inventario', desc: 'stock, entregas, órdenes de compra y kardex' },
                       { key: 'calendar', label: 'Calendario', desc: 'fechas de proyectos y tareas' },
+                      { key: 'support', label: 'Soporte', desc: 'tickets de clientes, visitas y métricas de atención' },
                       ...(currentUser?.role === 'SUPER_ADMIN' ? [{ key: 'partners', label: 'Sociedad 💼', desc: 'finanzas ICAPSA·socio (costos, utilidades, pagos) — otórgala SOLO a tu socio comercial' }] : [])
                     ].map(tab => (
                       <label key={tab.key} className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:text-gray-900">
@@ -334,7 +352,7 @@ export default function Settings() {
                   Los administradores tienen acceso a todas las pestañas automáticamente.
                 </div>
               )}
-              {!editing && (
+              {!editing && form.role !== 'CLIENT' && (
                 <div>
                   <label className="block text-xs text-gray-500 mb-2">Proyectos con acceso</label>
                   <div className="border border-gray-200 rounded-lg p-2 max-h-32 overflow-y-auto space-y-1">

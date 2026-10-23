@@ -40,8 +40,35 @@ router.get('/', async (req, res) => {
       }
     })
 
+    // Visitas de soporte programadas: administradores ven todas; el resto, las suyas
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)
+    const visits = await prisma.ticketVisit.findMany({
+      where: {
+        status: { not: 'CANCELLED' },
+        ...(isAdmin ? {} : { OR: [{ technicianId: userId }, { ticket: { assigneeId: userId } }] }),
+        ...(parseDate(start) && parseDate(end) && { scheduledAt: { gte: parseDate(start), lte: parseDate(end) } })
+      },
+      include: { technician: { select: { name: true } }, ticket: { select: { id: true, folio: true, title: true, company: true, location: true } } }
+    })
+
     // Construir eventos unificados
     const events = []
+
+    visits.forEach(v => {
+      events.push({
+        id: `visit-${v.id}`,
+        type: 'visit',
+        title: `Visita ${v.ticket.folio}${v.ticket.company ? ` · ${v.ticket.company}` : ''}`,
+        date: v.scheduledAt,
+        color: '#8B5CF6',
+        projectId: null,
+        projectName: v.ticket.title,
+        status: v.status,
+        assignee: v.technician?.name,
+        ticketId: v.ticket.id,
+        location: v.ticket.location
+      })
+    })
 
     // Eventos de tareas
     tasks.forEach(t => {

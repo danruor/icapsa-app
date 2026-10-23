@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Menu, X, MessagesSquare, KanbanSquare, Briefcase } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, Package, Calendar, Settings, FileText, LogOut, Menu, X, MessagesSquare, KanbanSquare, Briefcase, LifeBuoy } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../lib/authStore'
 import { brandForEmail } from '../lib/brand'
@@ -15,7 +15,8 @@ const nav = [
   { to: '/board',     icon: KanbanSquare,    label: 'Pendientes', key: 'board' },
   { to: '/projects',  icon: FolderKanban,    label: 'Proyectos',  key: 'projects' },
   { to: '/inventory', icon: Package,         label: 'Inventario', key: 'inventory' },
-  { to: '/calendar',  icon: Calendar,        label: 'Calendario', key: 'calendar' }
+  { to: '/calendar',  icon: Calendar,        label: 'Calendario', key: 'calendar' },
+  { to: '/support',   icon: LifeBuoy,        label: 'Soporte',    key: 'support' }
 ]
 
 const adminNav = [

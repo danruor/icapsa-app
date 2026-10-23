@@ -14,10 +14,27 @@ import Calendar from './pages/Calendar'
 import Settings from './pages/Settings'
 import Quotes from './pages/Quotes'
 import Layout from './components/Layout'
+import ClientLayout from './components/ClientLayout'
+import Support from './pages/Support'
+import TicketDetail from './pages/TicketDetail'
+import ClientPortal from './pages/ClientPortal'
 
+// Sistema interno: requiere sesión y NO ser cliente externo (los clientes van a su portal)
 const PrivateRoute = ({ children }) => {
   const token = useAuthStore((s) => s.token)
-  return token ? children : <Navigate to="/login" replace />
+  const user = useAuthStore((s) => s.user)
+  if (!token) return <Navigate to="/login" replace />
+  if (user?.role === 'CLIENT') return <Navigate to="/portal" replace />
+  return children
+}
+
+// Portal de clientes: requiere sesión de cliente (el personal interno va al dashboard)
+const ClientRoute = ({ children }) => {
+  const token = useAuthStore((s) => s.token)
+  const user = useAuthStore((s) => s.user)
+  if (!token) return <Navigate to="/login" replace />
+  if (user?.role !== 'CLIENT') return <Navigate to="/dashboard" replace />
+  return children
 }
 
 const AdminRoute = ({ children }) => {
@@ -60,6 +77,10 @@ export default function App() {
       <BrandApplier />
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/portal" element={<ClientRoute><ClientLayout /></ClientRoute>}>
+          <Route index element={<ClientPortal />} />
+          <Route path="tickets/:id" element={<TicketDetail />} />
+        </Route>
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
@@ -70,6 +91,8 @@ export default function App() {
           <Route path="projects/:id" element={<TabRoute tab="projects"><ProjectDetail /></TabRoute>} />
           <Route path="inventory" element={<TabRoute tab="inventory"><Inventory /></TabRoute>} />
           <Route path="calendar" element={<TabRoute tab="calendar"><Calendar /></TabRoute>} />
+          <Route path="support" element={<TabRoute tab="support"><Support /></TabRoute>} />
+          <Route path="support/:id" element={<TabRoute tab="support"><TicketDetail /></TabRoute>} />
           <Route path="settings" element={<AdminRoute><Settings /></AdminRoute>} />
           <Route path="quotes" element={<SuperAdminRoute><Quotes /></SuperAdminRoute>} />
         </Route>

@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Calendar as CalIcon } from 'lucide-react'
@@ -9,10 +10,12 @@ const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const typeLabel = {
   'task': 'Tarea',
   'project-start': 'Inicio de proyecto',
-  'project-end': 'Entrega de proyecto'
+  'project-end': 'Entrega de proyecto',
+  'visit': 'Visita de soporte'
 }
 
 export default function Calendar() {
+  const navigate = useNavigate()
   const [current, setCurrent] = useState(new Date())
   const [activeProjects, setActiveProjects] = useState(null) // null = todos
 
@@ -111,6 +114,7 @@ export default function Calendar() {
               <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-gray-400" />Tarea</div>
               <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-sm bg-gray-400" />Inicio proyecto</div>
               <div className="flex items-center gap-2"><span className="w-0 h-0 border-l-4 border-l-transparent border-r-4 border-r-transparent border-b-[7px] border-b-gray-400" />Entrega</div>
+              <div className="flex items-center gap-2"><span className="text-[10px] leading-none">🔧</span>Visita de soporte</div>
             </div>
           </div>
         </div>
@@ -136,12 +140,14 @@ export default function Calendar() {
                       <div className="space-y-1">
                         {dayEvents.slice(0, 3).map(ev => (
                           <div key={ev.id}
-                            className="text-[10px] px-1.5 py-0.5 rounded truncate flex items-center gap-1"
+                            onClick={() => ev.type === 'visit' && ev.ticketId && navigate(`/support/${ev.ticketId}`)}
+                            className={`text-[10px] px-1.5 py-0.5 rounded truncate flex items-center gap-1 ${ev.type === 'visit' ? 'cursor-pointer hover:brightness-95' : ''}`}
                             style={{ background: `${ev.color}1a`, color: ev.color }}
-                            title={`${typeLabel[ev.type]}: ${ev.title} (${ev.projectName})`}>
+                            title={`${typeLabel[ev.type]}: ${ev.title} (${ev.projectName})${ev.assignee ? ` · ${ev.assignee}` : ''}`}>
                             {ev.type === 'project-end' && <span className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[5px]" style={{ borderBottomColor: ev.color }} />}
                             {ev.type === 'project-start' && <span className="w-1.5 h-1.5 rounded-sm flex-shrink-0" style={{ background: ev.color }} />}
                             {ev.type === 'task' && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: ev.color }} />}
+                            {ev.type === 'visit' && <span className="text-[9px] leading-none flex-shrink-0">🔧</span>}
                             <span className="truncate">{ev.title}</span>
                           </div>
                         ))}

@@ -68,7 +68,7 @@ router.post('/login', async (req, res) => {
     await logActivity({ userId: user.id, action: 'login', detail: 'inició sesión' })
 
     res.json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, visibleTabs: user.visibleTabs },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, visibleTabs: user.visibleTabs, company: user.company },
       token
     })
   } catch (err) {
@@ -80,7 +80,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', authenticate, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
-    select: { id: true, email: true, name: true, role: true, visibleTabs: true, createdAt: true }
+    select: { id: true, email: true, name: true, role: true, visibleTabs: true, company: true, createdAt: true }
   })
   res.json(user)
 })
@@ -89,7 +89,7 @@ router.get('/me', authenticate, async (req, res) => {
 router.get('/users', authenticate, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
-      where: { isActive: true },
+      where: { isActive: true, role: { not: 'CLIENT' } },
       select: { id: true, name: true, email: true, position: true },
       orderBy: { name: 'asc' }
     })

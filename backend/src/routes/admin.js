@@ -29,7 +29,7 @@ router.get('/users', async (req, res) => {
     const users = await prisma.user.findMany({
       select: {
         id: true, email: true, name: true, role: true, isActive: true,
-        phone: true, position: true, visibleTabs: true, createdAt: true,
+        phone: true, position: true, company: true, visibleTabs: true, createdAt: true,
         projects: {
           include: { project: { select: { id: true, name: true, color: true } } }
         }
@@ -46,8 +46,12 @@ router.get('/users', async (req, res) => {
 // POST /api/admin/users - crear usuario
 router.post('/users', async (req, res) => {
   try {
-    let { email, password, name, role, phone, position, projectIds, visibleTabs } = req.body
+    let { email, password, name, role, phone, position, projectIds, visibleTabs, company } = req.body
     if (email) email = email.trim().toLowerCase()
+    if (!['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'MEMBER', 'CLIENT'].includes(role || 'MEMBER'))
+      return res.status(400).json({ error: 'Rol inválido' })
+    if (role === 'CLIENT' && !(company || '').trim())
+      return res.status(400).json({ error: 'Un usuario cliente necesita su empresa' })
     if (password && password.length < 8)
       return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' })
     if (!email || !password || !name)
@@ -65,8 +69,10 @@ router.post('/users', async (req, res) => {
       data: {
         email, password: hashed, name,
         role: role || 'MEMBER', phone, position,
-        ...(Array.isArray(visibleTabs) && { visibleTabs: await sanitizeTabs(visibleTabs, req) }),
-        ...(projectIds?.length && {
+        company: role === 'CLIENT' ? String(company).trim().slice(0, 80) : null,
+        // Los clientes externos no tienen pestañas internas: solo su portal
+        ...(role === 'CLIENT' ? { visibleTabs: '' } : (Array.isArray(visibleTabs) && { visibleTabs: await sanitizeTabs(visibleTabs, req) })),
+        ...(role !== 'CLIENT' && projectIds?.length && {
           projects: {
             create: projectIds.map(pid => ({ projectId: pid, role: role || 'MEMBER' }))
           }
@@ -74,7 +80,7 @@ router.post('/users', async (req, res) => {
       },
       select: { id: true, email: true, name: true, role: true, isActive: true }
     })
-    await logActivity({ userId: req.user.id, action: 'user_created', detail: `creó al usuario ${user.name} (${user.email}) con rol ${user.role}` })
+    await logActivity({ userId: req.user.id, action: 'user_created', detail: `creó al usuario ${user.name} (${user.email}) con rol ${user.role}${role === 'CLIENT' ? ` · empresa ${String(company).trim()}` : ''}` })
     res.status(201).json(user)
   } catch (err) {
     console.error('Error crear usuario:', err.message)
@@ -85,9 +91,14 @@ router.post('/users', async (req, res) => {
 // PATCH /api/admin/users/:id - editar usuario
 router.patch('/users/:id', async (req, res) => {
   try {
-    const { name, role, phone, position, isActive, password, visibleTabs } = req.body
+    const { name, role, phone, position, isActive, password, visibleTabs, company } = req.body
     const target = await prisma.user.findUnique({ where: { id: req.params.id } })
     if (!target) return res.status(404).json({ error: 'Usuario no encontrado' })
+    if (role !== undefined && !['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'MEMBER', 'CLIENT'].includes(role))
+      return res.status(400).json({ error: 'Rol inválido' })
+    const finalRole = role !== undefined ? role : target.role
+    if (finalRole === 'CLIENT' && !((company !== undefined ? company : target.company) || '').trim())
+      return res.status(400).json({ error: 'Un usuario cliente necesita su empresa' })
 
     // Proteger: solo SUPER_ADMIN puede modificar roles admin
     if ((['SUPER_ADMIN', 'ADMIN'].includes(role) || ['SUPER_ADMIN', 'ADMIN'].includes(target.role))
@@ -104,7 +115,10 @@ router.patch('/users/:id', async (req, res) => {
       ...(phone !== undefined && { phone }),
       ...(position !== undefined && { position }),
       ...(isActive !== undefined && { isActive }),
-      ...(Array.isArray(visibleTabs) && { visibleTabs: await sanitizeTabs(visibleTabs, req) })
+      ...(company !== undefined && { company: finalRole === 'CLIENT' ? String(company).trim().slice(0, 80) : null }),
+      ...(finalRole === 'CLIENT'
+        ? { visibleTabs: '', company: String(company !== undefined ? company : target.company).trim().slice(0, 80) }
+        : (Array.isArray(visibleTabs) && { visibleTabs: await sanitizeTabs(visibleTabs, req) }))
     }
     if (password && password.length < 8)
       return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' })
@@ -113,7 +127,7 @@ router.patch('/users/:id', async (req, res) => {
     const user = await prisma.user.update({
       where: { id: req.params.id },
       data,
-      select: { id: true, email: true, name: true, role: true, isActive: true, phone: true, position: true, visibleTabs: true }
+      select: { id: true, email: true, name: true, role: true, isActive: true, phone: true, position: true, visibleTabs: true, company: true }
     })
     const changes = []
     if (role !== undefined) changes.push(`rol→${role}`)

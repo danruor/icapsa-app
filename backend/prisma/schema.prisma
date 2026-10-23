@@ -16,7 +16,8 @@ model User {
   isActive  Boolean  @default(true)
   phone     String?
   position  String?
-  visibleTabs String @default("projects,inventory,calendar,chat,board")
+  company   String?  // empresa del cliente (rol CLIENT)
+  visibleTabs String @default("projects,inventory,calendar,chat,board,support")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -43,6 +44,11 @@ model User {
   partnerDataCharges PartnerDataCharge[]
   partnerConcepts PartnerConcept[]
   partnerCompetitorPrices PartnerCompetitorPrice[]
+  ticketsCreated    SupportTicket[]    @relation("TicketCreator")
+  ticketsAssigned   SupportTicket[]    @relation("TicketAssignee")
+  ticketMessages    TicketMessage[]
+  ticketAttachments TicketAttachment[]
+  ticketVisits      TicketVisit[]      @relation("VisitTechnician")
 }
 
 enum Role {
@@ -50,6 +56,7 @@ enum Role {
   ADMIN
   MANAGER
   MEMBER
+  CLIENT // usuario externo: solo portal de soporte
 }
 
 model Project {
@@ -80,6 +87,7 @@ model Project {
   boardCards BoardCard[]
   notes       Note[]  @relation("NoteProjects")
   partnerDeals PartnerDeal[]
+  supportTickets SupportTicket[]
 }
 
 enum ProjectStatus {
@@ -282,6 +290,7 @@ model Quote {
   deliveries  Delivery[]
   boardCards  BoardCard[]
   linkedNotes Note[]  @relation("NoteQuotes")
+  supportTickets SupportTicket[]
 }
 
 enum QuoteStatus {
@@ -329,6 +338,7 @@ model PurchaseOrder {
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   movements   InventoryMovement[]
   boardCards  BoardCard[]
+  supportTickets SupportTicket[]
 }
 
 model Delivery {
@@ -348,6 +358,7 @@ model Delivery {
   quoteId     String?
   quote       Quote?   @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   movements   InventoryMovement[]
+  supportTickets SupportTicket[]
 }
 
 model Conversation {
@@ -638,4 +649,99 @@ model PartnerCompetitorPrice {
 
   createdById String
   createdBy   User @relation(fields: [createdById], references: [id])
+}
+
+// ===== SOPORTE A CLIENTES (tickets con trazabilidad completa) =====
+
+model SupportTicket {
+  id              String    @id @default(cuid())
+  folio           String    @unique // TKT-AAAA-NNNN
+  title           String
+  description     String
+  category        String    @default("OTHER")  // FAILURE | INSTALLATION | DATA | BILLING | WARRANTY | OTHER
+  priority        String    @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  status          String    @default("OPEN")   // OPEN | IN_PROGRESS | WAITING_CLIENT | RESOLVED | CLOSED
+  company         String?   // empresa del cliente (snapshot para filtros)
+  location        String?   // sitio / obra / dirección
+  equipment       String?   // equipo, serie o medidor afectado
+  slaDueAt        DateTime? // límite de atención según prioridad
+  slaNotifiedAt   DateTime? // aviso de SLA vencido ya enviado
+  firstResponseAt DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  rating          Int?      // 1-5 calificación del cliente al cerrar
+  ratingComment   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  createdById String
+  createdBy   User   @relation("TicketCreator", fields: [createdById], references: [id])
+  assigneeId  String?
+  assignee    User?  @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  projectId       String?
+  project         Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  quoteId         String?
+  quote           Quote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  deliveryId      String?
+  delivery        Delivery?      @relation(fields: [deliveryId], references: [id], onDelete: SetNull)
+
+  messages    TicketMessage[]
+  attachments TicketAttachment[]
+  visits      TicketVisit[]
+
+  @@index([status, priority])
+  @@index([createdById])
+  @@index([assigneeId])
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  kind      String   @default("MESSAGE") // MESSAGE (visible al cliente) | INTERNAL (solo equipo) | SYSTEM (evento)
+  body      String
+  createdAt DateTime @default(now())
+
+  ticketId String
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId String?
+  author   User?  @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  attachments TicketAttachment[]
+
+  @@index([ticketId, createdAt])
+}
+
+model TicketAttachment {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  size      Int
+  mimeType  String
+  createdAt DateTime @default(now())
+
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messageId String?
+  message   TicketMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  uploadedById String
+  uploadedBy   User @relation(fields: [uploadedById], references: [id])
+}
+
+model TicketVisit {
+  id          String   @id @default(cuid())
+  scheduledAt DateTime
+  durationMin Int      @default(120)
+  status      String   @default("SCHEDULED") // SCHEDULED | DONE | CANCELLED
+  notes       String?  // indicaciones previas
+  outcome     String?  // resultado de la visita
+  createdAt   DateTime @default(now())
+
+  ticketId     String
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  technicianId String?
+  technician   User? @relation("VisitTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
+
+  @@index([scheduledAt])
 }
