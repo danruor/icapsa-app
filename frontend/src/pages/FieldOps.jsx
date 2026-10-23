@@ -13,7 +13,8 @@ import { useSort, SortTh } from '../components/sortable'
 import { MATERIAL_CATEGORY, SITE_TYPE, STAGE, STAGE_ORDER, INFILTRATION, REPORT_STATUS, PHOTO_KIND, money, fmtDate, fmtDateTime } from '../lib/field'
 import { StageBar, PhotoGrid } from './InstallerPortal'
 import { LogBook, AttendanceSheet, ScheduleView, FieldCalendar, EventHistory, SiteForm } from './FieldShared'
-import { CalendarDays, NotebookPen, Grid3x3, History, Download } from 'lucide-react'
+import { CalendarDays, NotebookPen, Grid3x3, History, Download, Scale, FileText } from 'lucide-react'
+import { OpeningCard, ProjectBomCompare } from './OpeningPage'
 
 const moneyShort = (n) => Math.abs(n) >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : Math.abs(n) >= 1e3 ? `$${(n / 1e3).toFixed(0)}k` : `$${(n || 0).toFixed(0)}`
 const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
@@ -166,7 +167,7 @@ export function FieldProject() {
       </div>
 
       <div className="flex gap-1 border-b border-gray-200 mb-4 overflow-x-auto">
-        {[{ k: 'sites', l: `Bóvedas (${p.fieldSites.length})`, i: HardHat }, { k: 'schedule', l: 'Programa', i: CalendarDays }, { k: 'calendar', l: 'Calendario', i: CalendarDays }, { k: 'logs', l: 'Bitácora', i: NotebookPen }, { k: 'attendance', l: 'Asistencia', i: Users }, { k: 'matrix', l: 'Material por bóveda', i: Grid3x3 }].map(x => (
+        {[{ k: 'sites', l: `Bóvedas (${p.fieldSites.length})`, i: HardHat }, { k: 'schedule', l: 'Programa', i: CalendarDays }, { k: 'calendar', l: 'Calendario', i: CalendarDays }, { k: 'logs', l: 'Bitácora', i: NotebookPen }, { k: 'attendance', l: 'Asistencia', i: Users }, { k: 'matrix', l: 'Material por bóveda', i: Grid3x3 }, { k: 'bom', l: 'Proyecto vs instalado', i: Scale }].map(x => (
           <button key={x.k} onClick={() => setTab(x.k)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === x.k ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><x.i size={14} /> {x.l}</button>
         ))}
       </div>
@@ -176,6 +177,7 @@ export function FieldProject() {
       {tab === 'logs' && <LogBook projectId={p.id} sites={p.fieldSites} />}
       {tab === 'attendance' && <AttendanceSheet projectId={p.id} sites={p.fieldSites} />}
       {tab === 'matrix' && <MaterialMatrix projectId={p.id} />}
+      {tab === 'bom' && <ProjectBomCompare projectId={p.id} />}
 
       {tab === 'sites' && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Bóvedas */}
@@ -304,8 +306,11 @@ function MaterialMatrix({ projectId }) {
 export function FieldSite() {
   const { siteId } = useParams()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { data: s, isLoading } = useQuery({ queryKey: ['field-site', siteId], queryFn: () => api.get(`/field/sites/${siteId}`).then(r => r.data) })
   const [tab, setTab] = useState('reports')
+  const [newOpening, setNewOpening] = useState('')
+  const addOpening = useMutation({ mutationFn: () => api.post(`/field/sites/${siteId}/openings`, { label: newOpening }), onSuccess: () => { setNewOpening(''); qc.invalidateQueries(['field-site', siteId]) }, onError: (e) => alert(e.response?.data?.error || 'Error') })
   if (isLoading) return <p className="text-center text-gray-400 py-16">Cargando...</p>
   if (!s) return <p className="text-center text-gray-400 py-16">Bóveda no encontrada</p>
   const st = STAGE[s.stage] || STAGE.PENDING
@@ -322,6 +327,7 @@ export function FieldSite() {
               {s.equipment && <span className="flex items-center gap-1"><Wrench size={11} /> {s.equipment}</span>}
               {s.infiltration && <span className="flex items-center gap-1"><Droplets size={11} /> {s.infiltration.split(',').map(i => INFILTRATION[i]?.label).join(', ')}</span>}
             </p>
+            <button onClick={() => downloadFile(`/field/sites/${s.id}/sealing-plan.pdf`, `Plano-sellado-${s.code}.pdf`).catch(() => alert('Error al descargar'))} className="mt-2 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1 text-gray-700 hover:border-brand-400"><FileText size={13} /> Plano de sellado PDF (entregable CFE)</button>
           </div>
           <div className="text-right">
             <span className="text-xs px-2 py-1 rounded-full font-medium text-white" style={{ background: st.color }}>{st.label}</span>
@@ -370,7 +376,16 @@ export function FieldSite() {
             {(!s.attendance || s.attendance.length === 0) && <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-400">Sin asistencia registrada en esta bóveda</td></tr>}</tbody></table></div>
       )}
       {tab === 'photos' && <PhotoGrid photos={s.photos} />}
-      {tab === 'openings' && <div className="space-y-1.5">{s.openings.map(o => <div key={o.id} className="bg-white rounded-lg border border-gray-200 px-3 py-2 text-sm flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${o.status === 'SEALED' ? 'bg-emerald-500' : 'bg-gray-300'}`} />{o.label}<span className="ml-auto text-xs text-gray-400">{o.status === 'SEALED' ? 'Sellada' : 'Pendiente'}</span></div>)}</div>}
+      {tab === 'openings' && (
+        <div className="space-y-2 max-w-3xl">
+          <p className="text-xs text-gray-500">Cada ventana tiene dos planos de sellado: el del <b>proyecto</b> (lo define oficina) y el <b>instalado</b> (lo registra el instalador). Entra a una ventana para dibujarlos y compararlos.</p>
+          {s.openings.map(o => <OpeningCard key={o.id} o={o} onClick={() => navigate(`/field/ventanas/${o.id}`)} />)}
+          <div className="flex gap-2">
+            <input value={newOpening} onChange={e => setNewOpening(e.target.value)} placeholder="Nueva ventana (ej. Ventana norte, Ducto 3)" className={inputCls} />
+            <button onClick={() => newOpening.trim() && addOpening.mutate()} className="bg-gray-800 text-white px-3 rounded-lg"><Plus size={16} /></button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

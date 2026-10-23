@@ -57,6 +57,7 @@ model User {
   fieldAttendanceAuthored FieldAttendance[] @relation("AttendanceAuthor")
   fieldAttendanceAs       FieldAttendance[] @relation("AttendanceWorker")
   fieldEvents       FieldEvent[]
+  fieldOpeningRevisions FieldOpeningRevision[]
 }
 
 enum Role {
@@ -827,12 +828,44 @@ model FieldOpening {
   status      String   @default("PENDING") // PENDING | SEALED
   position    Int      @default(0)
   createdAt   DateTime @default(now())
+  // Plano de sellado (tipo "packing plan" de Roxtec Transit Designer):
+  //  · planned* = lo que indica el PROYECTO (lo diseña oficina)
+  //  · built*   = lo INSTALADO en campo (lo registra el instalador)
+  //  layout = JSON { frames:[{type,size,cols,bays:[{rows:[{h,modules:[{sku,cables:[{d,tag}],solid}]}]}]}], extras, notes }
+  //  bom    = lista de material derivada del layout (marcos, módulos RM, stayplates, wedges...) + resumen
+  plannedLayout Json?
+  plannedBom    Json?
+  plannedAt     DateTime?
+  plannedById   String?
+  builtLayout   Json?
+  builtBom      Json?
+  builtAt       DateTime?
+  builtById     String?
 
   siteId String
   site   FieldSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
-  usages FieldMaterialUsage[]
-  photos FieldPhoto[]
+  usages    FieldMaterialUsage[]
+  photos    FieldPhoto[]
+  revisions FieldOpeningRevision[]
+}
+
+// Historial de versiones del plano de sellado (trazabilidad: quién cambió qué y cuándo)
+model FieldOpeningRevision {
+  id        String   @id @default(cuid())
+  kind      String   // PLANNED | BUILT
+  layout    Json
+  bom       Json
+  summary   String?  // descripción corta del plano en esa versión
+  note      String?  // comentario del autor al guardar
+  createdAt DateTime @default(now())
+
+  openingId String
+  opening   FieldOpening @relation(fields: [openingId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User @relation(fields: [authorId], references: [id])
+
+  @@index([openingId, createdAt])
 }
 
 // Instalador asignado a una obra (define qué ve en su portal)

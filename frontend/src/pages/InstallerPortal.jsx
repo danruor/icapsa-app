@@ -10,6 +10,7 @@ import { useAuthStore } from '../lib/authStore'
 import { MATERIAL_CATEGORY, SITE_TYPE, STAGE, STAGE_ORDER, INFILTRATION, REPORT_STATUS, PHOTO_KIND, fmtDate, fmtDateTime, todayInput, compressImage, getPosition } from '../lib/field'
 import { LogBook, AttendanceSheet, ScheduleView, FieldCalendar, EventHistory, SiteForm } from './FieldShared'
 import { Users, NotebookPen, CalendarDays, History } from 'lucide-react'
+import { OpeningCard } from './OpeningPage'
 
 // ===================================================================
 // /campo — Mis obras
@@ -248,13 +249,8 @@ export function InstallerSite() {
       {tab === 'photos' && <PhotoGrid photos={site.photos} />}
       {tab === 'openings' && (
         <div className="space-y-2">
-          {site.openings.map(o => (
-            <div key={o.id} className="bg-white rounded-lg border border-gray-200 px-3 py-2.5 flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${o.status === 'SEALED' ? 'bg-emerald-500' : 'bg-gray-300'}`} />
-              <div className="flex-1 min-w-0"><p className="text-sm text-gray-900">{o.label}</p>{o.description && <p className="text-xs text-gray-400">{o.description}</p>}</div>
-              <span className="text-[10px] text-gray-400">{o.status === 'SEALED' ? 'Sellada' : 'Pendiente'}</span>
-            </div>
-          ))}
+          <p className="text-[11px] text-gray-500 bg-sky-50 border border-sky-100 rounded-lg p-2">Toca una ventana para dibujar su <b>plano de sellado</b>: marcos, filas de módulos RM, cables y reservas. El sistema calcula el material y lo compara con el proyecto.</p>
+          {site.openings.map(o => <OpeningCard key={o.id} o={o} onClick={() => navigate(`/campo/ventanas/${o.id}`)} />)}
           <div className="flex gap-2">
             <input value={newOpening} onChange={e => setNewOpening(e.target.value)} placeholder="Nueva ventana (ej. Ducto 4 lado norte)" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
             <button onClick={() => newOpening.trim() && addOpening.mutate()} className="bg-gray-800 text-white px-3 rounded-lg"><Plus size={16} /></button>

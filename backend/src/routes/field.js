@@ -9,6 +9,11 @@ import { authenticate } from '../middleware/auth.js'
 import { notify, logActivity } from '../lib/events.js'
 import { nextFolio } from '../lib/folio.js'
 import { parseDate, num } from '../lib/validate.js'
+import { Prisma } from '@prisma/client'
+import PDFDocument from 'pdfkit'
+import { fileURLToPath } from 'url'
+import { normalizeLayout, computeBom, describeLayout, describeBom, compareBoms, mergeBoms, normSku } from '../lib/roxtec.js'
+import { drawLayout, drawTable } from '../lib/roxtecPdf.js'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -46,9 +51,13 @@ const LOG_LABEL = { NOTE: 'Nota', PROGRESS: 'Avance', ISSUE: 'Problema', DELAY: 
 
 // Catálogo ROXTEC de arranque (nomenclatura real: marcos B/GKO, módulos RM Multidiameter, stayplates, wedges, RS, lubricante)
 export const ROXTEC_SEED = [
-  ...['B 2x1', 'B 2x2', 'B 4x1', 'B 4x2', 'B 6x1', 'B 6x2', 'B 8x1', 'B 8x2'].map(n => ({ sku: n.replace(' ', '-'), name: `Marco Roxtec ${n}`, category: 'FRAME', unit: 'pza' })),
-  ...['GKO 2', 'GKO 4', 'GKO 6', 'GKO 8'].map(n => ({ sku: n.replace(' ', '-'), name: `Marco Roxtec ${n}`, category: 'FRAME', unit: 'pza' })),
-  ...['RM 15', 'RM 20', 'RM 30', 'RM 40', 'RM 60', 'RM 80', 'RM 90', 'RM 120'].map(n => ({ sku: n.replace(' ', '-'), name: `Módulo ${n} Multidiameter`, category: 'MODULE', unit: 'pza' })),
+  // Marcos B (atornillados) y GKO (armables): tamaño 2/4/6/8 = altura de empaque 60/120/180/240 mm × 1–5 aberturas de 120 mm
+  ...[2, 4, 6, 8].flatMap(sz => [1, 2, 3, 4, 5].map(c => ({ sku: `B-${sz}x${c}`, name: `Marco Roxtec B ${sz}x${c}`, category: 'FRAME', unit: 'pza', notes: `${c} abertura${c > 1 ? 's' : ''} de 120 × ${sz * 30} mm` }))),
+  ...[2, 4, 6, 8].flatMap(sz => [1, 2, 3].map(c => ({ sku: `GKO-${sz}x${c}`, name: `Marco Roxtec GKO ${sz}x${c}`, category: 'FRAME', unit: 'pza', notes: `${c} abertura${c > 1 ? 's' : ''} de 120 × ${sz * 30} mm` }))),
+  ...['RM 15', 'RM 20', 'RM 30', 'RM 40', 'RM 60', 'RM 80', 'RM 120'].map(n => ({ sku: n.replace(' ', '-'), name: `Módulo ${n} Multidiameter`, category: 'MODULE', unit: 'pza' })),
+  { sku: 'RM-40-10-32', name: 'Módulo RM 40 10-32 Multidiameter', category: 'MODULE', unit: 'pza', notes: 'Variante de RM 40 para Ø 9.5–32.5 mm' },
+  { sku: 'RM-60-24-54', name: 'Módulo RM 60 24-54 Multidiameter', category: 'MODULE', unit: 'pza', notes: 'Variante de RM 60 para Ø 24–54 mm' },
+  { sku: 'RM-40H80', name: 'Módulo RM 40H80 Multidiameter', category: 'MODULE', unit: 'pza', notes: '40 × 80 mm, complementa al RM 80 en la misma fila' },
   ...['RM 15w40', 'RM 20w40'].map(n => ({ sku: n.replace(' ', '-'), name: `Módulo ${n} (twin)`, category: 'MODULE', unit: 'pza' })),
   ...['RM 20/0', 'RM 30/0', 'RM 40/0', 'RM 60/0'].map(n => ({ sku: n.replace(' ', '-').replace('/', '_'), name: `Módulo ciego ${n}`, category: 'MODULE', unit: 'pza' })),
   { sku: 'STAYPLATE-60', name: 'Stayplate 60', category: 'STAYPLATE', unit: 'pza' },
@@ -239,7 +248,7 @@ router.get('/projects/:id', async (req, res) => {
         id: true, name: true, client: true, address: true, status: true, color: true, description: true, startDate: true, endDate: true,
         fieldSites: {
           include: {
-            openings: { orderBy: { position: 'asc' } },
+            openings: { orderBy: { position: 'asc' }, select: { id: true, label: true, description: true, status: true, position: true, plannedBom: true, builtBom: true, plannedAt: true, builtAt: true } },
             _count: { select: { reports: true, photos: true, logs: true } }
           },
           orderBy: { position: 'asc' }
@@ -251,7 +260,7 @@ router.get('/projects/:id', async (req, res) => {
     // Bitácora bloqueante abierta por bóveda (para marcar en rojo)
     const blocking = await prisma.fieldLog.findMany({ where: { projectId: project.id, blocking: true, resolvedAt: null }, select: { siteId: true } })
     const blockedSites = new Set(blocking.map(b => b.siteId))
-    for (const s of project.fieldSites) s.hasBlockingIssue = blockedSites.has(s.id)
+    for (const s of project.fieldSites) { s.hasBlockingIssue = blockedSites.has(s.id); s.openings = s.openings.map(o => ({ ...openingSummary(o), description: o.description })) }
 
     const out = { ...project, installers: project.fieldAssignments.map(a => ({ ...a.user, isLead: a.isLead, assignmentId: a.id })) }
     delete out.fieldAssignments
@@ -447,6 +456,266 @@ router.patch('/openings/:id', async (req, res) => {
 router.delete('/openings/:id', requireOffice, async (req, res) => {
   try { await prisma.fieldOpening.delete({ where: { id: req.params.id } }); res.json({ message: 'Ventana eliminada' }) }
   catch { res.status(500).json({ error: 'Error al eliminar' }) }
+})
+
+// ===================================================================
+// PLANO DE SELLADO por ventana — equivalente al "packing plan" de Roxtec Transit Designer
+//   · PLANNED: lo que indica el proyecto (solo oficina)
+//   · BUILT:   lo instalado en campo (instalador asignado u oficina)
+//   El servidor valida las reglas Roxtec (lib/roxtec.js), deriva la lista de material,
+//   guarda una revisión por cada cambio y avisa a oficina si lo instalado se desvía del proyecto.
+// ===================================================================
+const LOGO_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '../assets/icapsa.png')
+const OPENING_INCLUDE = { site: { select: { id: true, code: true, name: true, address: true, stage: true, status: true, projectId: true, project: { select: { id: true, name: true, client: true, deletedAt: true } } } } }
+const REV_SEL = { select: { id: true, kind: true, summary: true, note: true, createdAt: true, author: USER_SEL } }
+
+async function loadOpening(req, res, id) {
+  const o = await prisma.fieldOpening.findUnique({ where: { id }, include: OPENING_INCLUDE })
+  if (!o || o.site.project.deletedAt || !(await canAccessProject(req, o.site.projectId))) { res.status(404).json({ error: 'Ventana no encontrada' }); return null }
+  return o
+}
+const openingView = (o, revisions) => ({ ...o, diff: o.plannedBom && o.builtBom ? compareBoms(o.plannedBom, o.builtBom) : null, revisions })
+
+// GET /api/field/openings/:id — ventana con sus dos planos, comparación e historial de versiones
+router.get('/openings/:id', async (req, res) => {
+  try {
+    const o = await loadOpening(req, res, req.params.id)
+    if (!o) return
+    const revisions = await prisma.fieldOpeningRevision.findMany({ where: { openingId: o.id }, ...REV_SEL, orderBy: { createdAt: 'desc' }, take: 40 })
+    const photos = await prisma.fieldPhoto.findMany({ where: { openingId: o.id }, select: { id: true, url: true, kind: true, caption: true, takenAt: true }, orderBy: { takenAt: 'desc' }, take: 30 })
+    res.json({ ...openingView(o, revisions), photos })
+  } catch (err) {
+    console.error('Error ventana:', err.message)
+    res.status(500).json({ error: 'Error al obtener la ventana' })
+  }
+})
+
+// GET /api/field/openings/revisions/:revId — una versión completa (para verla o restaurarla)
+router.get('/openings/revisions/:revId', async (req, res) => {
+  try {
+    const r = await prisma.fieldOpeningRevision.findUnique({ where: { id: req.params.revId }, include: { author: USER_SEL } })
+    if (!r || !(await loadOpening(req, res, r.openingId))) return
+    res.json(r)
+  } catch { res.status(500).json({ error: 'Error al obtener la versión' }) }
+})
+
+// PUT /api/field/openings/:id/layout — { kind: 'PLANNED'|'BUILT', layout, note, markSealed }
+router.put('/openings/:id/layout', async (req, res) => {
+  try {
+    const o = await loadOpening(req, res, req.params.id)
+    if (!o) return
+    const kind = req.body.kind === 'PLANNED' ? 'PLANNED' : 'BUILT'
+    if (kind === 'PLANNED' && isInstaller(req)) return res.status(403).json({ error: 'Solo oficina define el plano del proyecto' })
+    if (JSON.stringify(req.body.layout || {}).length > 120000) return res.status(400).json({ error: 'El plano es demasiado grande' })
+    const { errors, warnings, layout } = normalizeLayout(req.body.layout)
+    if (errors.length) return res.status(400).json({ error: errors[0], errors, warnings })
+    const empty = !layout.frames.length && !layout.extras.length
+    const bom = empty ? null : computeBom(layout)
+    const summary = empty ? null : describeLayout(layout)
+    const data = kind === 'PLANNED'
+      ? { plannedLayout: empty ? Prisma.DbNull : layout, plannedBom: empty ? Prisma.DbNull : bom, plannedAt: empty ? null : new Date(), plannedById: empty ? null : req.user.id }
+      : { builtLayout: empty ? Prisma.DbNull : layout, builtBom: empty ? Prisma.DbNull : bom, builtAt: empty ? null : new Date(), builtById: empty ? null : req.user.id }
+    let sealedChanged = null
+    if (kind === 'BUILT' && typeof req.body.markSealed === 'boolean') { const st = req.body.markSealed ? 'SEALED' : 'PENDING'; if (st !== o.status) { data.status = st; sealedChanged = st } }
+    const updated = await prisma.fieldOpening.update({ where: { id: o.id }, data, include: OPENING_INCLUDE })
+    const note = clean(req.body.note, 300) || null
+    if (!empty) await prisma.fieldOpeningRevision.create({ data: { openingId: o.id, kind, layout, bom, summary, note, authorId: req.user.id } })
+    const who = kind === 'PLANNED' ? 'del proyecto' : 'instalado'
+    await trace(req, o.site.projectId, o.siteId, kind === 'PLANNED' ? 'LAYOUT_PLANNED' : 'LAYOUT_BUILT', `${req.user.name} ${empty ? 'borró' : 'guardó'} el plano ${who} de «${o.label}»${summary ? `: ${summary}` : ''}${note ? ` — ${note}` : ''}`)
+    await logActivity({ userId: req.user.id, projectId: o.site.projectId, action: 'field_layout', detail: `${empty ? 'borró' : 'guardó'} el plano ${who} de ${o.site.code} / ${o.label}` })
+    if (sealedChanged) await trace(req, o.site.projectId, o.siteId, 'OPENING', `${req.user.name} marcó la ventana «${o.label}» como ${sealedChanged === 'SEALED' ? 'sellada' : 'pendiente'}`)
+    // Desviación respecto al proyecto → aviso a oficina
+    if (kind === 'BUILT' && !empty && updated.plannedBom) {
+      const diff = compareBoms(updated.plannedBom, bom)
+      if (diff.hasDeviation) {
+        const txt = diff.changed.slice(0, 6).map(r => `${r.sku || r.name}: ${r.planned} → ${r.built}`).join(', ') + (diff.changed.length > 6 ? ` (+${diff.changed.length - 6})` : '')
+        await trace(req, o.site.projectId, o.siteId, 'LAYOUT_DEVIATION', `⚠️ «${o.label}»: lo instalado difiere del proyecto — ${txt}`)
+        const admins = await prisma.user.findMany({ where: { role: { in: ['SUPER_ADMIN', 'ADMIN'] }, isActive: true }, select: { id: true } })
+        for (const a of admins) if (a.id !== req.user.id)
+          await notify({ userId: a.id, type: 'field_deviation', title: `Cambio vs proyecto · ${o.site.code} / ${o.label}`, message: `${req.user.name}: ${txt.slice(0, 140)}`, link: `/field/ventanas/${o.id}` })
+      }
+    }
+    const revisions = await prisma.fieldOpeningRevision.findMany({ where: { openingId: o.id }, ...REV_SEL, orderBy: { createdAt: 'desc' }, take: 40 })
+    res.json({ ...openingView(updated, revisions), warnings })
+  } catch (err) {
+    console.error('Error plano de ventana:', err.message)
+    res.status(500).json({ error: 'Error al guardar el plano' })
+  }
+})
+
+// Resumen por ventana para listas (sin el JSON completo de los planos)
+const openingSummary = (o) => ({
+  id: o.id, label: o.label, status: o.status, position: o.position,
+  hasPlanned: !!o.plannedBom, hasBuilt: !!o.builtBom, plannedAt: o.plannedAt, builtAt: o.builtAt,
+  planned: describeBom(o.plannedBom), built: describeBom(o.builtBom),
+  plannedStats: o.plannedBom?.summary || null, builtStats: o.builtBom?.summary || null,
+  deviation: o.plannedBom && o.builtBom ? compareBoms(o.plannedBom, o.builtBom).hasDeviation : null
+})
+
+// GET /api/field/sites/:id/bom — material de la bóveda según planos: proyecto vs instalado, por ventana y total
+router.get('/sites/:id/bom', async (req, res) => {
+  try {
+    const site = await loadSite(req, res, req.params.id, { openings: { orderBy: { position: 'asc' } } })
+    if (!site) return
+    const planned = mergeBoms(site.openings.map(o => o.plannedBom)), built = mergeBoms(site.openings.map(o => o.builtBom))
+    const cmp = compareBoms(planned, built)
+    res.json({
+      site: { id: site.id, code: site.code, name: site.name },
+      openings: site.openings.map(o => ({ ...openingSummary(o), diff: o.plannedBom && o.builtBom ? compareBoms(o.plannedBom, o.builtBom).changed : [] })),
+      rows: cmp.rows, hasDeviation: cmp.hasDeviation,
+      totals: { openings: site.openings.length, withPlanned: site.openings.filter(o => o.plannedBom).length, withBuilt: site.openings.filter(o => o.builtBom).length, deviations: site.openings.filter(o => o.plannedBom && o.builtBom && compareBoms(o.plannedBom, o.builtBom).hasDeviation).length, sealed: site.openings.filter(o => o.status === 'SEALED').length }
+    })
+  } catch (err) {
+    console.error('Error BOM bóveda:', err.message)
+    res.status(500).json({ error: 'Error al calcular el material' })
+  }
+})
+
+// GET /api/field/projects/:id/bom-compare — (oficina) por material: asignado a la obra · proyecto (planos) · instalado (planos) · reportado (consumo en reportes)
+router.get('/projects/:id/bom-compare', requireOffice, async (req, res) => {
+  try {
+    const project = await prisma.project.findFirst({ where: { id: req.params.id, deletedAt: null }, select: { id: true, name: true, fieldSites: { select: { id: true, code: true, name: true, openings: { orderBy: { position: 'asc' } } }, orderBy: { position: 'asc' } } } })
+    if (!project) return res.status(404).json({ error: 'Obra no encontrada' })
+    const [allocations, usages, catalog] = await Promise.all([
+      prisma.fieldAllocation.findMany({ where: { projectId: project.id }, include: { material: MATERIAL_SEL } }),
+      prisma.fieldMaterialUsage.findMany({ where: { report: { projectId: project.id, status: { in: ['SUBMITTED', 'APPROVED'] } } }, include: { material: MATERIAL_SEL } }),
+      prisma.fieldMaterial.findMany({ select: MATERIAL_SEL.select })
+    ])
+    const bySku = {}
+    for (const m of catalog) if (m.sku) bySku[normSku(m.sku)] = m
+    const table = {}
+    const row = (key, seed) => (table[key] = table[key] || { key, sku: seed.sku || null, name: seed.name, category: seed.category || 'OTHER', unit: seed.unit || 'pza', material: seed.material || bySku[key] || null, allocated: 0, planned: 0, built: 0, reported: 0, cost: 0 })
+    const matKey = (m) => m.sku ? normSku(m.sku) : `name:${m.name.toLowerCase()}`
+    for (const a of allocations) row(matKey(a.material), { ...a.material, material: a.material }).allocated += a.quantity
+    for (const u of usages) { const r = row(matKey(u.material), { ...u.material, material: u.material }); r.reported += u.quantity; r.cost += u.quantity * u.unitCost }
+    const openings = []
+    for (const s of project.fieldSites) for (const o of s.openings) {
+      for (const l of o.plannedBom?.lines || []) row(normSku(l.sku || l.name), { sku: l.sku, name: bySku[normSku(l.sku || l.name)]?.name || l.name, category: l.category === 'EXTRA' ? 'OTHER' : l.category }).planned += l.qty
+      for (const l of o.builtBom?.lines || []) row(normSku(l.sku || l.name), { sku: l.sku, name: bySku[normSku(l.sku || l.name)]?.name || l.name, category: l.category === 'EXTRA' ? 'OTHER' : l.category }).built += l.qty
+      openings.push({ ...openingSummary(o), site: { id: s.id, code: s.code, name: s.name }, changes: o.plannedBom && o.builtBom ? compareBoms(o.plannedBom, o.builtBom).changed.map(c => `${c.sku || c.name}: ${c.planned} → ${c.built}`) : [] })
+    }
+    const order = { FRAME: 0, MODULE: 1, STAYPLATE: 2, WEDGE: 3 }
+    const rows = Object.values(table).map(r => ({
+      ...r,
+      deltaBuilt: Math.round((r.built - r.planned) * 100) / 100,          // instalado − proyecto (planos)
+      deltaReported: Math.round((r.reported - r.built) * 100) / 100,      // reportado en campo − dibujado como instalado
+      unitCost: r.material?.unitCost || 0,
+      flag: (r.planned || r.built) && r.built !== r.planned ? 'DEVIATION' : (r.built && r.reported < r.built) ? 'UNREPORTED' : (r.reported > r.built && r.built) ? 'OVER_REPORTED' : 'OK'
+    })).sort((a, b) => ((order[a.category] ?? 9) - (order[b.category] ?? 9)) || String(a.sku || a.name).localeCompare(String(b.sku || b.name), undefined, { numeric: true }))
+    res.json({
+      project: { id: project.id, name: project.name },
+      rows, openings,
+      totals: {
+        openings: openings.length, withPlanned: openings.filter(o => o.hasPlanned).length, withBuilt: openings.filter(o => o.hasBuilt).length,
+        deviations: openings.filter(o => o.deviation).length, sealed: openings.filter(o => o.status === 'SEALED').length,
+        materialsDeviated: rows.filter(r => r.flag === 'DEVIATION').length,
+        costPlanned: rows.reduce((s, r) => s + r.planned * r.unitCost, 0), costBuilt: rows.reduce((s, r) => s + r.built * r.unitCost, 0), costReported: rows.reduce((s, r) => s + r.cost, 0)
+      }
+    })
+  } catch (err) {
+    console.error('Error comparación obra:', err.message)
+    res.status(500).json({ error: 'Error al comparar material' })
+  }
+})
+
+// GET /api/field/sites/:id/sealing-plan.pdf — entregable para CFE: planos de cada ventana + material + evidencia
+router.get('/sites/:id/sealing-plan.pdf', async (req, res) => {
+  try {
+    const site = await loadSite(req, res, req.params.id, {
+      openings: { orderBy: { position: 'asc' } },
+      photos: { where: { kind: { in: ['BEFORE', 'AFTER'] }, mimeType: { in: ['image/jpeg', 'image/png'] } }, orderBy: { takenAt: 'asc' }, select: { url: true, kind: true, caption: true, takenAt: true } }
+    })
+    if (!site) return
+    const project = await prisma.project.findUnique({ where: { id: site.projectId }, select: { name: true, client: true, address: true } })
+    const builders = await prisma.user.findMany({ where: { id: { in: site.openings.map(o => o.builtById).filter(Boolean) } }, select: { id: true, name: true } })
+    const builderName = Object.fromEntries(builders.map(u => [u.id, u.name]))
+    const doc = new PDFDocument({ margin: 40, size: 'LETTER', info: { Title: `Plano de sellado ${site.code}`, Author: 'ICAPSA' } })
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="Plano-sellado-${site.code.replace(/[^a-z0-9]/gi, '_')}.pdf"`)
+    doc.pipe(res)
+    const W = doc.page.width - 80, L = 40
+    const BLUE = '#22A2DE'
+    // Encabezado
+    try { if (fs.existsSync(LOGO_PATH)) doc.image(LOGO_PATH, L, 36, { height: 30 }) } catch {}
+    doc.fontSize(15).fillColor('#111827').text('Plano de sellado de bóveda — Sistema ROXTEC', L + 130, 38, { width: W - 130, align: 'right' })
+    doc.fontSize(8).fillColor('#6B7280').text(`Generado ${new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })} · ${req.user.name}`, L + 130, 58, { width: W - 130, align: 'right' })
+    doc.moveTo(L, 76).lineTo(L + W, 76).lineWidth(1).strokeColor(BLUE).stroke()
+    let y = 86
+    doc.fontSize(13).fillColor('#111827').text(`${site.code}${site.name ? ` · ${site.name}` : ''}`, L, y); y += 18
+    const info = [['Obra', project?.name], ['Cliente', project?.client], ['Dirección', site.address || project?.address], ['Equipo', site.equipment], ['Infiltración', site.infiltration ? site.infiltration.split(',').map(i => ({ RAIN: 'Agua pluvial', POTABLE: 'Agua potable', SEWAGE: 'Aguas negras', GROUNDWATER: 'Nivel freático' })[i] || i).join(', ') : null], ['Etapa', STAGE_LABEL[site.stage]], ['Ventanas', `${site.openings.length} (${site.openings.filter(o => o.status === 'SEALED').length} selladas)`], ['Coordenadas', site.latitude ? `${site.latitude.toFixed(5)}, ${site.longitude.toFixed(5)}` : null]].filter(([, v]) => v)
+    doc.fontSize(8.5)
+    info.forEach(([k, v], i) => { const col = i % 2, rowY = y + Math.floor(i / 2) * 13; doc.fillColor('#6B7280').text(`${k}: `, L + col * (W / 2), rowY, { continued: true, width: W / 2 }).fillColor('#111827').text(String(v)) })
+    y += Math.ceil(info.length / 2) * 13 + 10
+    const legend = 'Lectura del plano: cada abertura mide 120 mm de ancho; las filas de módulos RM se apilan desde abajo hasta la altura de empaque del marco; la línea negra entre filas es la stayplate; el trapecio superior es el wedge (unidad de compresión). Módulos achurados = reserva para cables futuros; el círculo indica el cable y su diámetro.'
+    doc.fontSize(7.5).fillColor('#6B7280').text(legend, L, y, { width: W }); y = doc.y + 12
+
+    const ensure = (h) => { if (y + h > doc.page.height - 50) { doc.addPage(); y = 40 } }
+    for (const o of site.openings) {
+      ensure(60)
+      doc.rect(L, y, W, 18).fill('#F3F4F6')
+      doc.fontSize(10).fillColor('#111827').text(`Ventana: ${o.label}`, L + 6, y + 4.5, { continued: true }).fontSize(8).fillColor(o.status === 'SEALED' ? '#047857' : '#6B7280').text(`   ${o.status === 'SEALED' ? 'SELLADA' : 'PENDIENTE'}${o.builtAt ? ` · instalado ${fmtDate(o.builtAt)}${o.builtById && builderName[o.builtById] ? ` por ${builderName[o.builtById]}` : ''}` : ''}`)
+      y += 24
+      if (o.description) { doc.fontSize(8).fillColor('#6B7280').text(o.description, L, y, { width: W }); y = doc.y + 4 }
+      const both = o.plannedLayout && o.builtLayout
+      if (!o.plannedLayout && !o.builtLayout) { doc.fontSize(8.5).fillColor('#9CA3AF').text('Sin plano registrado para esta ventana.', L, y); y += 16; continue }
+      const colW = both ? (W - 16) / 2 : W
+      ensure(190)
+      let hUsed = 0
+      const blocks = both ? [['INSTALADO', o.builtLayout, L], ['PROYECTO', o.plannedLayout, L + colW + 16]] : [[o.builtLayout ? 'INSTALADO' : 'PROYECTO', o.builtLayout || o.plannedLayout, L]]
+      for (const [title, layout, x] of blocks) {
+        doc.fontSize(8).fillColor(title === 'INSTALADO' ? '#047857' : '#1D4ED8').text(title, x, y)
+        hUsed = Math.max(hUsed, drawLayout(doc, layout, x, y + 12, colW, 170) + 12)
+      }
+      y += hUsed + 6
+      // Lista de material
+      const cmp = both ? compareBoms(o.plannedBom, o.builtBom) : null
+      const lines = both ? cmp.rows : (o.builtBom || o.plannedBom).lines
+      const cols = both
+        ? [{ key: 'name', label: 'Material', width: W - 190 }, { key: 'planned', label: 'Proyecto', width: 60, align: 'right' }, { key: 'built', label: 'Instalado', width: 60, align: 'right' }, { key: 'delta', label: 'Dif.', width: 70, align: 'right' }]
+        : [{ key: 'name', label: 'Material', width: W - 170 }, { key: 'sku', label: 'SKU', width: 90 }, { key: 'qty', label: 'Cantidad', width: 80, align: 'right' }]
+      const rows = lines.map(l => both
+        ? { name: l.name, planned: l.planned, built: l.built, delta: l.delta > 0 ? `+${l.delta}` : l.delta || '', _color: l.delta ? { delta: '#B91C1C', name: '#B91C1C' } : null }
+        : { name: l.name + (l.spare ? ` (${l.spare} reserva)` : '') + (l.withCable && l.spare ? ` (${l.withCable} con cable)` : ''), sku: l.sku || '', qty: l.qty })
+      ensure(Math.min(rows.length + 1, 8) * 13 + 10)
+      y = drawTable(doc, L, y, cols, rows, { headerColor: BLUE }) + 4
+      const sm = (o.builtBom || o.plannedBom).summary
+      doc.fontSize(7.5).fillColor(sm.complete && !cmp?.hasDeviation ? '#374151' : '#B91C1C').text(`${sm.cables} cables · ${sm.spareModules + sm.solidModules} módulos de reserva (${sm.sparePct}%) · ${sm.rows} filas · ${sm.complete ? 'llenado completo' : `ATENCIÓN: llenado incompleto (${sm.fillPct}%)`}${cmp?.hasDeviation ? ` · ${cmp.changed.length} diferencia${cmp.changed.length > 1 ? 's' : ''} respecto al proyecto` : cmp ? ' · igual al proyecto' : ''}`, L, y, { width: W })
+      y = doc.y + 14
+    }
+    // Totales de la bóveda
+    const built = mergeBoms(site.openings.map(o => o.builtBom)), planned = mergeBoms(site.openings.map(o => o.plannedBom))
+    if (built.lines.length || planned.lines.length) {
+      ensure(80)
+      doc.fontSize(11).fillColor('#111827').text('Resumen de material de la bóveda', L, y); y += 16
+      const cmp = compareBoms(planned, built)
+      y = drawTable(doc, L, y, [{ key: 'name', label: 'Material', width: W - 280 }, { key: 'sku', label: 'SKU', width: 90 }, { key: 'planned', label: 'Proyecto', width: 60, align: 'right' }, { key: 'built', label: 'Instalado', width: 60, align: 'right' }, { key: 'delta', label: 'Dif.', width: 70, align: 'right' }],
+        cmp.rows.map(l => ({ name: l.name, sku: l.sku || '', planned: l.planned || '', built: l.built || '', delta: l.delta > 0 ? `+${l.delta}` : l.delta || '', _color: l.delta && l.planned ? { delta: '#B91C1C' } : null })), { headerColor: BLUE }) + 12
+    }
+    // Evidencia fotográfica (antes / después)
+    const pick = (k) => site.photos.filter(p => p.kind === k).slice(0, 2)
+    const photos = [...pick('BEFORE'), ...pick('AFTER')]
+    if (photos.length) {
+      ensure(200)
+      doc.fontSize(11).fillColor('#111827').text('Evidencia fotográfica', L, y); y += 16
+      const pw = (W - 24) / 4
+      photos.forEach((p, i) => {
+        const file = path.join(UPLOAD_DIR, path.basename(p.url))
+        const x = L + i * (pw + 8)
+        try { if (fs.existsSync(file)) doc.image(file, x, y, { fit: [pw, 110], align: 'center', valign: 'center' }) } catch {}
+        doc.fontSize(7).fillColor('#6B7280').text(`${p.kind === 'BEFORE' ? 'Antes' : 'Después'} · ${fmtDate(p.takenAt)}`, x, y + 114, { width: pw, align: 'center' })
+      })
+      y += 130
+    }
+    // Pie de página en el margen inferior (sin provocar salto de página)
+    const mb = doc.page.margins.bottom; doc.page.margins.bottom = 0
+    doc.fontSize(6.5).fillColor('#9CA3AF').text('Generado por el sistema de gestión ICAPSA a partir de los registros de campo · Nomenclatura ROXTEC: marcos B/GKO, módulos RM Multidiameter, stayplates y wedges', L, doc.page.height - 26, { width: W, align: 'center', lineBreak: false })
+    doc.page.margins.bottom = mb
+    doc.end()
+    await logActivity({ userId: req.user.id, projectId: site.projectId, action: 'field_pdf', detail: `generó el plano de sellado PDF de ${site.code}` })
+  } catch (err) {
+    console.error('Error PDF plano:', err.message)
+    if (!res.headersSent) res.status(500).json({ error: 'Error al generar el PDF' })
+  }
 })
 
 // GET /api/field/sites/:id — ficha completa de la bóveda (reportes, fotos, material usado)
@@ -1071,6 +1340,20 @@ router.get('/export.xlsx', requireOffice, async (req, res) => {
     wsA.columns = [{ header: 'Fecha', key: 'date', width: 12 }, { header: 'Obra', key: 'project', width: 30 }, { header: 'Bóveda', key: 'site', width: 14 }, { header: 'Persona', key: 'name', width: 26 }, { header: 'Rol', key: 'role', width: 14 }, { header: 'Horas', key: 'hours', width: 8 }, { header: 'Nota', key: 'note', width: 40 }]
     head(wsA)
     for (const a of att) wsA.addRow({ date: new Date(a.workDate).toISOString().slice(0, 10), project: a.project.name, site: a.site?.code || '', name: a.workerName, role: a.role || '', hours: a.hours ?? '', note: a.note || '' })
+    // Hoja: Plano de sellado (material por ventana según planos) y Proyecto vs instalado
+    const sitesForBom = await prisma.fieldSite.findMany({ where: { project: { deletedAt: null }, ...(req.query.projectId && { projectId: clean(req.query.projectId, 40) }) }, select: { code: true, name: true, project: { select: { name: true } }, openings: { orderBy: { position: 'asc' }, select: { label: true, status: true, plannedBom: true, builtBom: true, plannedAt: true, builtAt: true } } }, orderBy: { position: 'asc' } })
+    const wsP = wb.addWorksheet('Plano de sellado')
+    wsP.columns = [{ header: 'Obra', key: 'project', width: 30 }, { header: 'Bóveda', key: 'site', width: 14 }, { header: 'Ventana', key: 'opening', width: 24 }, { header: 'Estatus', key: 'status', width: 10 }, { header: 'Versión', key: 'kind', width: 11 }, { header: 'SKU', key: 'sku', width: 16 }, { header: 'Material', key: 'material', width: 34 }, { header: 'Cant.', key: 'qty', width: 8 }, { header: 'Con cable', key: 'withCable', width: 10 }, { header: 'Reserva', key: 'spare', width: 9 }, { header: 'Fecha', key: 'date', width: 12 }]
+    head(wsP)
+    for (const st of sitesForBom) for (const o of st.openings) for (const [kind, bom, at] of [['Proyecto', o.plannedBom, o.plannedAt], ['Instalado', o.builtBom, o.builtAt]]) for (const l of bom?.lines || [])
+      wsP.addRow({ project: st.project.name, site: st.code, opening: o.label, status: o.status === 'SEALED' ? 'Sellada' : 'Pendiente', kind, sku: l.sku || '', material: l.name, qty: l.qty, withCable: l.withCable || '', spare: (l.spare || 0) + (l.solid || 0) || '', date: at ? new Date(at).toISOString().slice(0, 10) : '' })
+    const wsD = wb.addWorksheet('Proyecto vs instalado')
+    wsD.columns = [{ header: 'Obra', key: 'project', width: 30 }, { header: 'Bóveda', key: 'site', width: 14 }, { header: 'Ventana', key: 'opening', width: 24 }, { header: 'SKU', key: 'sku', width: 16 }, { header: 'Material', key: 'material', width: 34 }, { header: 'Proyecto', key: 'planned', width: 10 }, { header: 'Instalado', key: 'built', width: 10 }, { header: 'Diferencia', key: 'delta', width: 11 }]
+    head(wsD)
+    for (const st of sitesForBom) for (const o of st.openings) if (o.plannedBom && o.builtBom) for (const r of compareBoms(o.plannedBom, o.builtBom).rows) {
+      const row = wsD.addRow({ project: st.project.name, site: st.code, opening: o.label, sku: r.sku || '', material: r.name, planned: r.planned, built: r.built, delta: r.delta })
+      if (r.delta) row.getCell('delta').font = { bold: true, color: { argb: 'FFB91C1C' } }
+    }
     await logActivity({ userId: req.user.id, action: 'field_export', detail: `exportó el recuento de material de campo${req.query.projectId ? ' de una obra' : ''}` })
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename="Campo-material.xlsx"`)

@@ -21,6 +21,7 @@ import ClientPortal from './pages/ClientPortal'
 import InstallerLayout from './components/InstallerLayout'
 import { InstallerHome, InstallerProject, InstallerSite, InstallerReport } from './pages/InstallerPortal'
 import FieldOps, { FieldProject, FieldSite, FieldReportDetail } from './pages/FieldOps'
+import OpeningPage from './pages/OpeningPage'
 
 // Sistema interno: requiere sesión y NO ser cliente externo (los clientes van a su portal)
 const PrivateRoute = ({ children }) => {
@@ -98,6 +99,7 @@ export default function App() {
           <Route index element={<InstallerHome />} />
           <Route path="bovedas/:siteId/nuevo" element={<InstallerReport />} />
           <Route path="bovedas/:siteId" element={<InstallerSite />} />
+          <Route path="ventanas/:openingId" element={<OpeningPage mode="installer" />} />
           <Route path="reportes/:reportId" element={<InstallerReport />} />
           <Route path=":projectId" element={<InstallerProject />} />
         </Route>
@@ -117,6 +119,7 @@ export default function App() {
           <Route path="field/obras/:projectId" element={<TabRoute tab="field"><FieldProject /></TabRoute>} />
           <Route path="field/bovedas/:siteId" element={<TabRoute tab="field"><FieldSite /></TabRoute>} />
           <Route path="field/reports/:reportId" element={<TabRoute tab="field"><FieldReportDetail /></TabRoute>} />
+          <Route path="field/ventanas/:openingId" element={<TabRoute tab="field"><OpeningPage mode="office" /></TabRoute>} />
           <Route path="settings" element={<AdminRoute><Settings /></AdminRoute>} />
           <Route path="quotes" element={<SuperAdminRoute><Quotes /></SuperAdminRoute>} />
         </Route>
