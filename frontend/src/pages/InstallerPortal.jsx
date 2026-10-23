@@ -8,6 +8,8 @@ import {
 import api from '../lib/api'
 import { useAuthStore } from '../lib/authStore'
 import { MATERIAL_CATEGORY, SITE_TYPE, STAGE, STAGE_ORDER, INFILTRATION, REPORT_STATUS, PHOTO_KIND, fmtDate, fmtDateTime, todayInput, compressImage, getPosition } from '../lib/field'
+import { LogBook, AttendanceSheet, ScheduleView, FieldCalendar, EventHistory, SiteForm } from './FieldShared'
+import { Users, NotebookPen, CalendarDays, History } from 'lucide-react'
 
 // ===================================================================
 // /campo — Mis obras
@@ -75,28 +77,57 @@ export function InstallerHome() {
 export function InstallerProject() {
   const { projectId } = useParams()
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { data: p, isLoading } = useQuery({ queryKey: ['field-project', projectId], queryFn: () => api.get(`/field/projects/${projectId}`).then(r => r.data) })
   const [filter, setFilter] = useState('ALL')
+  const [tab, setTab] = useState('sites')
+  const [newSite, setNewSite] = useState(false)
   if (isLoading) return <p className="text-center text-gray-400 py-10">Cargando obra...</p>
   if (!p) return <p className="text-center text-gray-400 py-10">Obra no encontrada</p>
   const sites = (p.fieldSites || []).filter(s => filter === 'ALL' ? true : filter === 'OPEN' ? s.status !== 'DONE' : s.status === 'DONE')
+  const blocked = (p.fieldSites || []).filter(s => s.hasBlockingIssue).length
 
   return (
     <div className="p-4 space-y-3">
       <button onClick={() => navigate('/campo')} className="flex items-center gap-1 text-sm text-gray-500"><ArrowLeft size={15} /> Mis obras</button>
-      <div>
-        <h1 className="text-lg font-semibold text-gray-900">{p.name}</h1>
-        <p className="text-xs text-gray-500">{p.client}{p.address ? ` · ${p.address}` : ''}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">{p.name}</h1>
+          <p className="text-xs text-gray-500">{p.client}{p.address ? ` · ${p.address}` : ''}</p>
+        </div>
+        <button onClick={() => setNewSite(true)} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-3 py-2 rounded-lg flex-shrink-0"><Plus size={16} /> Bóveda</button>
       </div>
-      <div className="flex gap-1">
-        {[{ k: 'ALL', l: `Todas (${p.fieldSites.length})` }, { k: 'OPEN', l: 'En proceso' }, { k: 'DONE', l: 'Terminadas' }].map(f => (
-          <button key={f.k} onClick={() => setFilter(f.k)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === f.k ? 'bg-brand-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>{f.l}</button>
+      {blocked > 0 && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-800 flex items-center gap-2"><AlertTriangle size={14} /> {blocked} bóveda{blocked > 1 ? 's' : ''} con bloqueo abierto</div>}
+
+      <div className="flex gap-1 overflow-x-auto -mx-4 px-4 pb-1">
+        {[{ k: 'sites', l: `Bóvedas (${p.fieldSites.length})`, i: ClipboardList }, { k: 'logs', l: 'Bitácora', i: NotebookPen }, { k: 'attendance', l: 'Asistencia', i: Users }, { k: 'schedule', l: 'Programa', i: CalendarDays }, { k: 'calendar', l: 'Calendario', i: CalendarDays }].map(x => (
+          <button key={x.k} onClick={() => setTab(x.k)} className={`flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${tab === x.k ? 'bg-gray-800 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}><x.i size={13} /> {x.l}</button>
         ))}
       </div>
-      <div className="space-y-2">
-        {sites.length === 0 && <p className="text-center text-sm text-gray-400 py-8">Sin bóvedas en este filtro</p>}
-        {sites.map(s => <SiteCard key={s.id} s={s} onClick={() => navigate(`/campo/bovedas/${s.id}`)} />)}
-      </div>
+
+      {tab === 'sites' && (
+        <>
+          <div className="flex gap-1">
+            {[{ k: 'ALL', l: 'Todas' }, { k: 'OPEN', l: 'En proceso' }, { k: 'DONE', l: 'Terminadas' }].map(f => (
+              <button key={f.k} onClick={() => setFilter(f.k)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === f.k ? 'bg-brand-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>{f.l}</button>
+            ))}
+          </div>
+          <div className="space-y-2">
+            {sites.length === 0 && (
+              <div className="bg-white rounded-xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-500">
+                {p.fieldSites.length === 0 ? <>Esta obra aún no tiene bóvedas.<br /><button onClick={() => setNewSite(true)} className="mt-2 text-brand-600 font-medium">Dar de alta la primera</button></> : 'Sin bóvedas en este filtro'}
+              </div>
+            )}
+            {sites.map(s => <SiteCard key={s.id} s={s} onClick={() => navigate(`/campo/bovedas/${s.id}`)} />)}
+          </div>
+        </>
+      )}
+      {tab === 'logs' && <LogBook projectId={p.id} sites={p.fieldSites} compact />}
+      {tab === 'attendance' && <AttendanceSheet projectId={p.id} sites={p.fieldSites} />}
+      {tab === 'schedule' && <ScheduleView projectId={p.id} editable onOpenSite={(id) => navigate(`/campo/bovedas/${id}`)} />}
+      {tab === 'calendar' && <FieldCalendar projectId={p.id} onOpenSite={(id) => navigate(`/campo/bovedas/${id}`)} onOpenReport={(id) => navigate(`/campo/reportes/${id}`)} />}
+
+      {newSite && <SiteForm projectId={p.id} installerMode onClose={() => setNewSite(false)} onSaved={(s) => { qc.invalidateQueries(['field-project', projectId]); navigate(`/campo/bovedas/${s.id}`) }} />}
     </div>
   )
 }
@@ -117,6 +148,12 @@ function SiteCard({ s, onClick }) {
           <p className="text-[11px] text-gray-400 mt-0.5 truncate">
             {s.equipment ? `${s.equipment} · ` : ''}{inf.map(i => INFILTRATION[i]?.icon).join(' ')} {s.openings?.length ? `· ${s.openings.length} ventana${s.openings.length > 1 ? 's' : ''}` : ''} {s._count?.reports ? `· ${s._count.reports} reportes` : ''}
           </p>
+          {(s.plannedEnd || s.hasBlockingIssue) && (
+            <p className="text-[11px] mt-0.5 flex gap-2">
+              {s.hasBlockingIssue && <span className="text-red-600 font-semibold">🛑 bloqueada</span>}
+              {s.plannedEnd && s.status !== 'DONE' && <span className={new Date(s.plannedEnd) < new Date() ? 'text-red-600' : 'text-gray-500'}>📅 fin plan. {fmtDate(s.plannedEnd)}</span>}
+            </p>
+          )}
         </div>
         <ChevronRight size={18} className="text-gray-300 flex-shrink-0 mt-2" />
       </div>
@@ -144,6 +181,7 @@ export function InstallerSite() {
   const me = useAuthStore(s => s.user)
   const { data: site, isLoading } = useQuery({ queryKey: ['field-site', siteId], queryFn: () => api.get(`/field/sites/${siteId}`).then(r => r.data) })
   const [tab, setTab] = useState('reports')
+  const [editSite, setEditSite] = useState(false)
   const [newOpening, setNewOpening] = useState('')
   const addOpening = useMutation({
     mutationFn: () => api.post(`/field/sites/${siteId}/openings`, { label: newOpening }),
@@ -172,8 +210,15 @@ export function InstallerSite() {
         <div className="flex flex-wrap gap-3 mt-3 text-xs text-gray-600">
           {site.equipment && <span className="flex items-center gap-1"><Wrench size={12} /> {site.equipment}</span>}
           {inf.length > 0 && <span className="flex items-center gap-1"><Droplets size={12} /> {inf.map(i => INFILTRATION[i]?.label).join(', ')}</span>}
+          {site.latitude && <a href={`https://maps.google.com/?q=${site.latitude},${site.longitude}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-brand-600"><MapPin size={12} /> mapa</a>}
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+          <div className="bg-gray-50 rounded-lg py-1.5"><p className="text-[10px] text-gray-400">Planeado</p><p className="text-sm font-semibold text-gray-800">{site.plannedDays ?? (site.plannedStart && site.plannedEnd ? Math.round((new Date(site.plannedEnd) - new Date(site.plannedStart)) / 86400000) + 1 : '—')} d</p></div>
+          <div className="bg-gray-50 rounded-lg py-1.5"><p className="text-[10px] text-gray-400">Días reales</p><p className={`text-sm font-semibold ${site.plannedDays && site.actualDays > site.plannedDays ? 'text-red-600' : 'text-gray-800'}`}>{site.actualDays ?? 0} d</p></div>
+          <div className="bg-gray-50 rounded-lg py-1.5"><p className="text-[10px] text-gray-400">Horas</p><p className="text-sm font-semibold text-gray-800">{site.hoursWorked ? site.hoursWorked.toFixed(0) : '—'}</p></div>
         </div>
         {site.notes && <p className="text-xs text-gray-500 mt-2 bg-gray-50 rounded-lg p-2">{site.notes}</p>}
+        <button onClick={() => setEditSite(true)} className="mt-2 text-xs text-brand-600 font-medium">Editar datos / ubicación / programa</button>
       </div>
 
       {/* Acción principal */}
@@ -186,9 +231,9 @@ export function InstallerSite() {
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800 flex items-center gap-2"><CheckCircle2 size={18} /> Bóveda terminada</div>
       )}
 
-      <div className="flex gap-1 border-b border-gray-200">
-        {[{ k: 'reports', l: `Reportes (${site.reports.length})` }, { k: 'photos', l: `Fotos (${site.photos.length})` }, { k: 'openings', l: `Ventanas (${site.openings.length})` }].map(x => (
-          <button key={x.k} onClick={() => setTab(x.k)} className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === x.k ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500'}`}>{x.l}</button>
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto -mx-4 px-4">
+        {[{ k: 'reports', l: `Reportes (${site.reports.length})` }, { k: 'logs', l: `Bitácora (${site.logs?.length || 0})` }, { k: 'photos', l: `Fotos (${site.photos.length})` }, { k: 'openings', l: `Ventanas (${site.openings.length})` }, { k: 'history', l: 'Historial' }].map(x => (
+          <button key={x.k} onClick={() => setTab(x.k)} className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === x.k ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500'}`}>{x.l}</button>
         ))}
       </div>
 
@@ -198,6 +243,8 @@ export function InstallerSite() {
           {site.reports.map(r => <ReportCard key={r.id} r={r} onClick={() => navigate(`/campo/reportes/${r.id}`)} />)}
         </div>
       )}
+      {tab === 'logs' && <LogBook projectId={site.projectId} siteId={site.id} compact />}
+      {tab === 'history' && <EventHistory events={site.events} />}
       {tab === 'photos' && <PhotoGrid photos={site.photos} />}
       {tab === 'openings' && (
         <div className="space-y-2">
@@ -215,6 +262,7 @@ export function InstallerSite() {
           <p className="text-[10px] text-gray-400">Agrega las ventanas que encuentres en sitio aunque no estuvieran previstas.</p>
         </div>
       )}
+      {editSite && <SiteForm projectId={site.projectId} site={site} installerMode onClose={() => setEditSite(false)} onSaved={() => qc.invalidateQueries(['field-site', siteId])} />}
     </div>
   )
 }

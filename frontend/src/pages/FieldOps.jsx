@@ -12,6 +12,8 @@ import { brandForEmail } from '../lib/brand'
 import { useSort, SortTh } from '../components/sortable'
 import { MATERIAL_CATEGORY, SITE_TYPE, STAGE, STAGE_ORDER, INFILTRATION, REPORT_STATUS, PHOTO_KIND, money, fmtDate, fmtDateTime } from '../lib/field'
 import { StageBar, PhotoGrid } from './InstallerPortal'
+import { LogBook, AttendanceSheet, ScheduleView, FieldCalendar, EventHistory, SiteForm } from './FieldShared'
+import { CalendarDays, NotebookPen, Grid3x3, History, Download } from 'lucide-react'
 
 const moneyShort = (n) => Math.abs(n) >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : Math.abs(n) >= 1e3 ? `$${(n / 1e3).toFixed(0)}k` : `$${(n || 0).toFixed(0)}`
 const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
@@ -47,17 +49,23 @@ export default function FieldOps() {
       )}
 
       <div className="flex gap-1 border-b border-gray-200 mb-5 overflow-x-auto">
-        {[{ k: 'projects', l: 'Obras' }, { k: 'review', l: `Revisión${t?.pendingReview ? ` (${t.pendingReview})` : ''}` }, { k: 'materials', l: 'Catálogo ROXTEC' }, { k: 'analytics', l: 'Recuento 📊' }].map(x => (
+        {[{ k: 'projects', l: 'Obras' }, { k: 'review', l: `Revisión${t?.pendingReview ? ` (${t.pendingReview})` : ''}` }, { k: 'calendar', l: 'Calendario' }, { k: 'materials', l: 'Catálogo ROXTEC' }, { k: 'analytics', l: 'Recuento 📊' }].map(x => (
           <button key={x.k} onClick={() => setTab(x.k)} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === x.k ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{x.l}</button>
         ))}
       </div>
 
       {tab === 'projects' && <ProjectsView />}
       {tab === 'review' && <ReviewView />}
+      {tab === 'calendar' && <FieldCalendarWrapper />}
       {tab === 'materials' && <MaterialsView />}
       {tab === 'analytics' && <AnalyticsView summary={summary} />}
     </div>
   )
+}
+
+function FieldCalendarWrapper() {
+  const navigate = useNavigate()
+  return <FieldCalendar onOpenSite={(id) => navigate(`/field/bovedas/${id}`)} onOpenReport={(id) => navigate(`/field/reports/${id}`)} />
 }
 
 function Stat({ label, value, sub, warn, highlight, onClick }) {
@@ -123,6 +131,7 @@ export function FieldProject() {
   const { data: installers = [] } = useQuery({ queryKey: ['field-installers'], queryFn: () => api.get('/field/installers').then(r => r.data) })
   const { data: materials = [] } = useQuery({ queryKey: ['field-materials'], queryFn: () => api.get('/field/materials').then(r => r.data) })
   const [siteModal, setSiteModal] = useState(null) // 'new' | site
+  const [tab, setTab] = useState('sites')
   const [alloc, setAlloc] = useState({ materialId: '', quantity: '', note: '' })
   const [assignId, setAssignId] = useState('')
   const inv = () => { qc.invalidateQueries(['field-project', projectId]); qc.invalidateQueries(['field-projects']); qc.invalidateQueries(['field-summary']) }
@@ -156,7 +165,19 @@ export function FieldProject() {
         <Stat label="Diferencia" value={money(p.costAllocated - p.costConsumed)} sub={p.costAllocated - p.costConsumed < 0 ? '⚠️ consumo mayor al asignado' : 'disponible'} warn={p.costAllocated - p.costConsumed < 0} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="flex gap-1 border-b border-gray-200 mb-4 overflow-x-auto">
+        {[{ k: 'sites', l: `Bóvedas (${p.fieldSites.length})`, i: HardHat }, { k: 'schedule', l: 'Programa', i: CalendarDays }, { k: 'calendar', l: 'Calendario', i: CalendarDays }, { k: 'logs', l: 'Bitácora', i: NotebookPen }, { k: 'attendance', l: 'Asistencia', i: Users }, { k: 'matrix', l: 'Material por bóveda', i: Grid3x3 }].map(x => (
+          <button key={x.k} onClick={() => setTab(x.k)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === x.k ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><x.i size={14} /> {x.l}</button>
+        ))}
+      </div>
+
+      {tab === 'schedule' && <ScheduleView projectId={p.id} editable onOpenSite={(id) => navigate(`/field/bovedas/${id}`)} />}
+      {tab === 'calendar' && <FieldCalendar projectId={p.id} onOpenSite={(id) => navigate(`/field/bovedas/${id}`)} onOpenReport={(id) => navigate(`/field/reports/${id}`)} />}
+      {tab === 'logs' && <LogBook projectId={p.id} sites={p.fieldSites} />}
+      {tab === 'attendance' && <AttendanceSheet projectId={p.id} sites={p.fieldSites} />}
+      {tab === 'matrix' && <MaterialMatrix projectId={p.id} />}
+
+      {tab === 'sites' && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Bóvedas */}
         <div className="lg:col-span-2 space-y-2">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Bóvedas / subestaciones ({p.fieldSites.length})</p>
@@ -173,7 +194,8 @@ export function FieldProject() {
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium text-white" style={{ background: st.color }}>{st.label}</span>
                     </div>
                     <p className="text-xs text-gray-600 truncate">{s.name || s.address || '—'}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">{s.equipment ? `${s.equipment} · ` : ''}{inf.map(i => `${INFILTRATION[i]?.icon} ${INFILTRATION[i]?.label}`).join(', ')} · {s.openings.length} ventanas · {s._count.reports} reportes · {s._count.photos} fotos</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">{s.equipment ? `${s.equipment} · ` : ''}{inf.map(i => `${INFILTRATION[i]?.icon} ${INFILTRATION[i]?.label}`).join(', ')} · {s.openings.length} ventanas · {s._count.reports} reportes · {s._count.photos} fotos{s._count.logs ? ` · ${s._count.logs} notas` : ''}</p>
+                    {(s.hasBlockingIssue || s.plannedEnd) && <p className="text-[11px] mt-0.5 flex gap-2">{s.hasBlockingIssue && <span className="text-red-600 font-semibold">🛑 bloqueada</span>}{s.plannedEnd && s.status !== 'DONE' && <span className={new Date(s.plannedEnd) < new Date() ? 'text-red-600' : 'text-gray-500'}>📅 fin plan. {fmtDate(s.plannedEnd)}</span>}</p>}
                     <StageBar stage={s.stage} />
                   </button>
                   <div className="flex flex-col gap-1">
@@ -236,52 +258,42 @@ export function FieldProject() {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
-      {siteModal && <SiteModal projectId={p.id} site={siteModal === 'new' ? null : siteModal} onClose={() => setSiteModal(null)} onSaved={inv} />}
+      {siteModal && <SiteForm projectId={p.id} site={siteModal === 'new' ? null : siteModal} onClose={() => setSiteModal(null)} onSaved={inv} />}
     </div>
   )
 }
 
-function SiteModal({ projectId, site, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    code: site?.code || '', name: site?.name || '', address: site?.address || '', siteType: site?.siteType || 'VAULT',
-    equipment: site?.equipment || '', infiltration: (site?.infiltration || '').split(',').filter(Boolean), stage: site?.stage || 'PENDING', notes: site?.notes || ''
-  })
-  const [openings, setOpenings] = useState(site ? [] : ['Ventana pasamuros'])
-  const save = useMutation({
-    mutationFn: () => site ? api.patch(`/field/sites/${site.id}`, form) : api.post(`/field/projects/${projectId}/sites`, { ...form, openings: openings.filter(Boolean) }),
-    onSuccess: () => { onSaved(); onClose() },
-    onError: (e) => alert(e.response?.data?.error || 'Error')
-  })
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
-  const toggleInf = (k) => setForm(f => ({ ...f, infiltration: f.infiltration.includes(k) ? f.infiltration.filter(x => x !== k) : [...f.infiltration, k] }))
+// ---------- Matriz bóveda × material ----------
+function MaterialMatrix({ projectId }) {
+  const { data, isLoading } = useQuery({ queryKey: ['field-matrix', projectId], queryFn: () => api.get(`/field/projects/${projectId}/materials-by-site`).then(r => r.data) })
+  if (isLoading) return <p className="text-center text-gray-400 text-sm py-8">Calculando...</p>
+  if (!data || data.rows.length === 0) return <p className="text-center text-gray-400 text-sm py-10">Sin material reportado todavía</p>
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-5">
-        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-semibold">{site ? `Editar ${site.code}` : 'Nueva bóveda / subestación'}</h2><button onClick={onClose} className="text-gray-400"><X size={20} /></button></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className="block text-xs text-gray-500 mb-1">Código *</label><input value={form.code} onChange={set('code')} placeholder="Bóveda 7" className={inputCls} /></div>
-          <div><label className="block text-xs text-gray-500 mb-1">Tipo</label><select value={form.siteType} onChange={set('siteType')} className={inputCls}>{Object.entries(SITE_TYPE).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}</select></div>
-          <div className="col-span-2"><label className="block text-xs text-gray-500 mb-1">Nombre / ubicación</label><input value={form.name} onChange={set('name')} placeholder="Seminario No. 181 y Moneda" className={inputCls} /></div>
-          <div className="col-span-2"><label className="block text-xs text-gray-500 mb-1">Dirección</label><input value={form.address} onChange={set('address')} className={inputCls} /></div>
-          <div className="col-span-2"><label className="block text-xs text-gray-500 mb-1">Equipo en la bóveda</label><input value={form.equipment} onChange={set('equipment')} placeholder="Seccionador, derivador, transformador, gabinete de control..." className={inputCls} /></div>
-          <div className="col-span-2"><label className="block text-xs text-gray-500 mb-1.5">Tipo de filtración</label>
-            <div className="flex flex-wrap gap-2">{Object.entries(INFILTRATION).map(([k, v]) => (
-              <button key={k} type="button" onClick={() => toggleInf(k)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${form.infiltration.includes(k) ? 'bg-sky-600 text-white border-sky-600' : 'border-gray-200 text-gray-600'}`}>{v.icon} {v.label}</button>
-            ))}</div></div>
-          <div><label className="block text-xs text-gray-500 mb-1">Etapa actual</label><select value={form.stage} onChange={set('stage')} className={inputCls}>{STAGE_ORDER.map(k => <option key={k} value={k}>{STAGE[k].label}</option>)}</select></div>
-          <div className="col-span-2"><label className="block text-xs text-gray-500 mb-1">Notas para el instalador</label><textarea rows={2} value={form.notes} onChange={set('notes')} className={inputCls + ' resize-none'} placeholder="Acceso, contacto CFE, precauciones..." /></div>
-          {!site && (
-            <div className="col-span-2"><label className="block text-xs text-gray-500 mb-1">Ventanas / puntos de sellado</label>
-              {openings.map((o, i) => (
-                <div key={i} className="flex gap-1.5 mb-1.5"><input value={o} onChange={e => setOpenings(arr => arr.map((x, j) => j === i ? e.target.value : x))} className={inputCls} /><button onClick={() => setOpenings(arr => arr.filter((_, j) => j !== i))} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button></div>
-              ))}
-              <button onClick={() => setOpenings(arr => [...arr, ''])} className="text-xs text-brand-600 font-medium flex items-center gap-1"><Plus size={12} /> Agregar ventana</button></div>
-          )}
-        </div>
-        <button onClick={() => save.mutate()} disabled={!form.code.trim() || save.isPending} className="w-full mt-4 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium py-2.5 rounded-lg disabled:opacity-40">{save.isPending ? 'Guardando...' : 'Guardar'}</button>
-      </div>
+    <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+      <p className="text-xs text-gray-400 px-4 pt-3">Piezas consumidas por bóveda según reportes enviados/aprobados. Cuántos marcos, módulos RM, stayplates, wedges y sellos RS lleva cada bóveda.</p>
+      <table className="text-xs mt-2">
+        <thead><tr className="border-y border-gray-100 text-gray-500">
+          <th className="px-3 py-2 text-left sticky left-0 bg-white">Bóveda</th>
+          {data.materials.map(m => <th key={m.id} className="px-2 py-2 text-center font-medium whitespace-nowrap" title={m.name}>{MATERIAL_CATEGORY[m.category]?.icon}<br />{m.sku || m.name.slice(0, 12)}</th>)}
+          <th className="px-3 py-2 text-right">Costo</th>
+        </tr></thead>
+        <tbody className="divide-y divide-gray-50">
+          {data.rows.map(r => (
+            <tr key={r.site.id} className="hover:bg-gray-50">
+              <td className="px-3 py-1.5 font-medium text-gray-900 sticky left-0 bg-white whitespace-nowrap">{r.site.code}<span className="block text-[10px] text-gray-400 font-normal truncate max-w-[140px]">{r.site.name}</span></td>
+              {data.materials.map(m => <td key={m.id} className={`px-2 py-1.5 text-center ${r.cells[m.id] ? 'text-gray-900 font-medium' : 'text-gray-200'}`}>{r.cells[m.id] || '·'}</td>)}
+              <td className="px-3 py-1.5 text-right font-semibold whitespace-nowrap">{money(r.cost)}</td>
+            </tr>
+          ))}
+          <tr className="bg-gray-50 font-semibold border-t border-gray-200">
+            <td className="px-3 py-2 sticky left-0 bg-gray-50">TOTAL</td>
+            {data.materials.map(m => <td key={m.id} className="px-2 py-2 text-center">{data.totals[m.id] || 0}</td>)}
+            <td className="px-3 py-2 text-right">{money(data.rows.reduce((s, r) => s + r.cost, 0))}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -318,6 +330,13 @@ export function FieldSite() {
           </div>
         </div>
         <StageBar stage={s.stage} />
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3 text-center text-xs">
+          <div className="bg-gray-50 rounded-lg py-1.5"><p className="text-[10px] text-gray-400">Inicio plan.</p><p className="font-medium">{fmtDate(s.plannedStart)}</p></div>
+          <div className="bg-gray-50 rounded-lg py-1.5"><p className="text-[10px] text-gray-400">Fin plan.</p><p className={`font-medium ${s.plannedEnd && s.status !== 'DONE' && new Date(s.plannedEnd) < new Date() ? 'text-red-600' : ''}`}>{fmtDate(s.plannedEnd)}</p></div>
+          <div className="bg-gray-50 rounded-lg py-1.5"><p className="text-[10px] text-gray-400">Inicio real</p><p className="font-medium">{fmtDate(s.actualStart)}</p></div>
+          <div className="bg-gray-50 rounded-lg py-1.5"><p className="text-[10px] text-gray-400">Días plan. / reales</p><p className={`font-medium ${s.plannedDays && s.actualDays > s.plannedDays ? 'text-red-600' : ''}`}>{s.plannedDays ?? '—'} / {s.actualDays ?? 0}</p></div>
+          <div className="bg-gray-50 rounded-lg py-1.5"><p className="text-[10px] text-gray-400">Horas</p><p className="font-medium">{s.hoursWorked ? s.hoursWorked.toFixed(0) : '—'}</p></div>
+        </div>
       </div>
 
       {/* Antes / después */}
@@ -331,7 +350,7 @@ export function FieldSite() {
       )}
 
       <div className="flex gap-1 border-b border-gray-200 mb-4">
-        {[{ k: 'reports', l: `Reportes (${s.reports.length})` }, { k: 'materials', l: 'Material usado' }, { k: 'photos', l: `Fotos (${s.photos.length})` }, { k: 'openings', l: `Ventanas (${s.openings.length})` }].map(x => (
+        {[{ k: 'reports', l: `Reportes (${s.reports.length})` }, { k: 'logs', l: `Bitácora (${s.logs?.length || 0})` }, { k: 'materials', l: 'Material usado' }, { k: 'photos', l: `Fotos (${s.photos.length})` }, { k: 'openings', l: `Ventanas (${s.openings.length})` }, { k: 'attendance', l: `Asistencia (${s.attendance?.length || 0})` }, { k: 'history', l: 'Historial' }].map(x => (
           <button key={x.k} onClick={() => setTab(x.k)} className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === x.k ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500'}`}>{x.l}</button>
         ))}
       </div>
@@ -342,6 +361,13 @@ export function FieldSite() {
             <tbody className="divide-y divide-gray-50">{s.materials?.map(m => <tr key={m.material.id}><td className="px-4 py-2">{MATERIAL_CATEGORY[m.material.category]?.icon} {m.material.name}</td><td className="px-3 py-2 text-right">{m.used} {m.material.unit}</td><td className="px-4 py-2 text-right font-medium">{money(m.cost)}</td></tr>)}
               {(!s.materials || s.materials.length === 0) && <tr><td colSpan="3" className="px-4 py-8 text-center text-gray-400">Sin material reportado</td></tr>}</tbody></table>
         </div>
+      )}
+      {tab === 'logs' && <LogBook projectId={s.projectId} siteId={s.id} />}
+      {tab === 'history' && <EventHistory events={s.events} />}
+      {tab === 'attendance' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-xs text-gray-500 border-b border-gray-100 text-left"><th className="px-4 py-2.5">Fecha</th><th className="px-3 py-2.5">Persona</th><th className="px-3 py-2.5">Rol</th><th className="px-3 py-2.5 text-right">Horas</th><th className="px-3 py-2.5">Registró</th></tr></thead>
+          <tbody className="divide-y divide-gray-50">{(s.attendance || []).map(a => <tr key={a.id}><td className="px-4 py-2">{fmtDate(a.workDate)}</td><td className="px-3 py-2">{a.workerName}</td><td className="px-3 py-2 text-xs text-gray-500">{a.role || '—'}</td><td className="px-3 py-2 text-right">{a.hours ?? '—'}</td><td className="px-3 py-2 text-xs text-gray-500">{a.author?.name}</td></tr>)}
+            {(!s.attendance || s.attendance.length === 0) && <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-400">Sin asistencia registrada en esta bóveda</td></tr>}</tbody></table></div>
       )}
       {tab === 'photos' && <PhotoGrid photos={s.photos} />}
       {tab === 'openings' && <div className="space-y-1.5">{s.openings.map(o => <div key={o.id} className="bg-white rounded-lg border border-gray-200 px-3 py-2 text-sm flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${o.status === 'SEALED' ? 'bg-emerald-500' : 'bg-gray-300'}`} />{o.label}<span className="ml-auto text-xs text-gray-400">{o.status === 'SEALED' ? 'Sellada' : 'Pendiente'}</span></div>)}</div>}
@@ -461,11 +487,16 @@ function MaterialsView() {
   const { data: materials = [], isLoading } = useQuery({ queryKey: ['field-materials', 'all'], queryFn: () => api.get('/field/materials?all=1').then(r => r.data) })
   const { sorted, sortKey, sortDir, toggle } = useSort(materials, MAT_SORTERS, 'category', 'asc')
   const patch = useMutation({ mutationFn: ({ id, data }) => api.patch(`/field/materials/${id}`, data), onSuccess: () => qc.invalidateQueries(['field-materials']) })
+  const seed = useMutation({ mutationFn: () => api.post('/field/materials/seed'), onSuccess: (r) => { qc.invalidateQueries(['field-materials']); alert(`Catálogo ROXTEC: ${r.data.created} productos agregados, ${r.data.skipped} ya existían. Captura el costo unitario de cada uno.`) }, onError: (e) => alert(e.response?.data?.error || 'Error') })
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-gray-400">Marcos GKO, sellos RS, módulos, impermeabilizante... El costo unitario se "congela" en cada reporte al momento de registrarlo.</p>
-        <button onClick={() => setEdit('new')} className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg flex-shrink-0"><Plus size={16} /> Material</button>
+        <div className="flex gap-2 flex-shrink-0">
+          <button onClick={() => { if (confirm('Precarga el catálogo ROXTEC estándar (marcos B/GKO, módulos RM, stayplates, wedges, sellos RS, lubricante, impermeabilizante) con costo $0. Solo agrega los que falten. ¿Continuar?')) seed.mutate() }} disabled={seed.isPending}
+            className="flex items-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium px-3 py-2 rounded-lg disabled:opacity-50"><Download size={15} /> {seed.isPending ? '...' : 'Precargar ROXTEC'}</button>
+          <button onClick={() => setEdit('new')} className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg"><Plus size={16} /> Material</button>
+        </div>
       </div>
       <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
         <table className="w-full text-sm min-w-[700px]"><thead><tr className="border-b border-gray-100 text-xs text-gray-500">

@@ -1,14 +1,40 @@
 // Catálogos y helpers del módulo de Instalación en campo (sellado de bóvedas ROXTEC)
 
 export const MATERIAL_CATEGORY = {
-  FRAME:      { label: 'Marco (GKO)',        icon: '🟦' },
-  SEAL:       { label: 'Sello (RS)',         icon: '⭕' },
-  MODULE:     { label: 'Módulo de sellado',  icon: '🧩' },
-  COATING:    { label: 'Impermeabilizante',  icon: '🪣' },
-  ACCESSORY:  { label: 'Accesorio',          icon: '🔩' },
-  CONSUMABLE: { label: 'Consumible',         icon: '🧰' },
-  OTHER:      { label: 'Otro',               icon: '📦' }
+  FRAME:      { label: 'Marco (B / GKO)',          icon: '🟦' },
+  MODULE:     { label: 'Módulo RM Multidiameter', icon: '🧩' },
+  STAYPLATE:  { label: 'Stayplate',               icon: '➖' },
+  WEDGE:      { label: 'Wedge / compresión',      icon: '🔧' },
+  SEAL:       { label: 'Sello redondo (RS)',       icon: '⭕' },
+  LUBRICANT:  { label: 'Lubricante',              icon: '🧴' },
+  COATING:    { label: 'Impermeabilizante',       icon: '🪣' },
+  ACCESSORY:  { label: 'Accesorio',               icon: '🔩' },
+  CONSUMABLE: { label: 'Consumible',              icon: '🧰' },
+  OTHER:      { label: 'Otro',                    icon: '📦' }
 }
+
+export const LOG_KIND = {
+  NOTE:     { label: 'Nota',          icon: '📝', chip: 'bg-gray-100 text-gray-700' },
+  PROGRESS: { label: 'Avance',        icon: '📈', chip: 'bg-emerald-50 text-emerald-700' },
+  ISSUE:    { label: 'Problema',      icon: '⚠️', chip: 'bg-amber-50 text-amber-700' },
+  DELAY:    { label: 'Retraso',       icon: '⏳', chip: 'bg-orange-50 text-orange-700' },
+  SAFETY:   { label: 'Seguridad',     icon: '🦺', chip: 'bg-red-50 text-red-700' },
+  CLIENT:   { label: 'Cliente / CFE', icon: '🏢', chip: 'bg-sky-50 text-sky-700' }
+}
+
+export const HEALTH = {
+  ON_TRACK:    { label: 'En tiempo',        color: '#22C55E' },
+  UNPLANNED:   { label: 'Sin programar',    color: '#9CA3AF' },
+  OVER_BUDGET: { label: 'Excede días',      color: '#F59E0B' },
+  OVERDUE:     { label: 'Vencida',          color: '#DC2626' },
+  BLOCKED:     { label: 'Bloqueada',        color: '#7C3AED' },
+  DONE:        { label: 'Terminada',        color: '#16A34A' },
+  LATE_DONE:   { label: 'Terminada tarde',  color: '#CA8A04' }
+}
+
+export const dateInput = (d) => d ? new Date(d).toISOString().slice(0, 10) : ''
+export const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
+export const dayDiff = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000)
 
 export const SITE_TYPE = {
   VAULT:      { label: 'Bóveda',      icon: '🕳️' },

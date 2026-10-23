@@ -53,6 +53,10 @@ model User {
   fieldReports      FieldReport[]      @relation("ReportAuthor")
   fieldReportsReviewed FieldReport[]   @relation("ReportReviewer")
   fieldPhotos       FieldPhoto[]
+  fieldLogs         FieldLog[]
+  fieldAttendanceAuthored FieldAttendance[] @relation("AttendanceAuthor")
+  fieldAttendanceAs       FieldAttendance[] @relation("AttendanceWorker")
+  fieldEvents       FieldEvent[]
 }
 
 enum Role {
@@ -96,6 +100,9 @@ model Project {
   fieldSites     FieldSite[]
   fieldAssignments FieldAssignment[]
   fieldReports   FieldReport[]
+  fieldLogs      FieldLog[]
+  fieldAttendance FieldAttendance[]
+  fieldEvents    FieldEvent[]
 }
 
 enum ProjectStatus {
@@ -789,6 +796,13 @@ model FieldSite {
   longitude      Float?
   notes          String?
   position       Int      @default(0)
+  // Programa de obra: planeado vs real
+  plannedStart   DateTime?
+  plannedEnd     DateTime?
+  plannedDays    Int?
+  actualStart    DateTime? // primer día con bitácora/reporte
+  actualEnd      DateTime? // fecha en que se marcó terminada
+  createdById    String?   // instalador u oficina que la dio de alta
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -798,6 +812,9 @@ model FieldSite {
   openings FieldOpening[]
   reports  FieldReport[]
   photos   FieldPhoto[]
+  logs     FieldLog[]
+  attendance FieldAttendance[]
+  events   FieldEvent[]
 
   @@index([projectId, position])
 }
@@ -921,4 +938,66 @@ model FieldPhoto {
   uploadedBy   User @relation(fields: [uploadedById], references: [id])
 
   @@index([siteId])
+}
+
+// Bitácora diaria de obra (libre, sin material): avance, problemas, por qué no se termina
+model FieldLog {
+  id        String   @id @default(cuid())
+  logDate   DateTime @default(now())
+  kind      String   @default("NOTE") // NOTE | PROGRESS | ISSUE | DELAY | SAFETY | CLIENT
+  body      String
+  blocking  Boolean  @default(false) // ¿detiene el avance?
+  resolvedAt DateTime?
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  siteId    String?
+  site      FieldSite? @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id])
+
+  @@index([projectId, logDate])
+  @@index([siteId])
+}
+
+// Asistencia diaria: quién trabajó, en qué bóveda, cuántas horas
+model FieldAttendance {
+  id         String   @id @default(cuid())
+  workDate   DateTime
+  workerName String   // nombre libre (cuadrilla puede incluir gente sin usuario)
+  hours      Float?
+  role       String?  // instalador, ayudante, oficial...
+  note       String?
+  createdAt  DateTime @default(now())
+
+  projectId String
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  siteId    String?
+  site      FieldSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  workerId  String?    // si la persona tiene usuario
+  worker    User?      @relation("AttendanceWorker", fields: [workerId], references: [id], onDelete: SetNull)
+  authorId  String
+  author    User       @relation("AttendanceAuthor", fields: [authorId], references: [id])
+
+  @@index([projectId, workDate])
+  @@index([siteId, workDate])
+}
+
+// Historial inmutable de cambios en una bóveda (trazabilidad)
+model FieldEvent {
+  id        String   @id @default(cuid())
+  action    String   // SITE_CREATED | STAGE | SCHEDULE | REPORT_SUBMITTED | REPORT_REVIEWED | LOG | ATTENDANCE | OPENING | PHOTO
+  detail    String
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  siteId    String?
+  site      FieldSite? @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([siteId, createdAt])
+  @@index([projectId, createdAt])
 }
