@@ -18,6 +18,9 @@ import ClientLayout from './components/ClientLayout'
 import Support from './pages/Support'
 import TicketDetail from './pages/TicketDetail'
 import ClientPortal from './pages/ClientPortal'
+import InstallerLayout from './components/InstallerLayout'
+import { InstallerHome, InstallerProject, InstallerSite, InstallerReport } from './pages/InstallerPortal'
+import FieldOps, { FieldProject, FieldSite, FieldReportDetail } from './pages/FieldOps'
 
 // Sistema interno: requiere sesión y NO ser cliente externo (los clientes van a su portal)
 const PrivateRoute = ({ children }) => {
@@ -25,6 +28,16 @@ const PrivateRoute = ({ children }) => {
   const user = useAuthStore((s) => s.user)
   if (!token) return <Navigate to="/login" replace />
   if (user?.role === 'CLIENT') return <Navigate to="/portal" replace />
+  if (user?.role === 'INSTALLER') return <Navigate to="/campo" replace />
+  return children
+}
+
+// Portal de instaladores: requiere sesión de instalador
+const InstallerRoute = ({ children }) => {
+  const token = useAuthStore((s) => s.token)
+  const user = useAuthStore((s) => s.user)
+  if (!token) return <Navigate to="/login" replace />
+  if (user?.role !== 'INSTALLER') return <Navigate to={user?.role === 'CLIENT' ? '/portal' : '/dashboard'} replace />
   return children
 }
 
@@ -81,6 +94,13 @@ export default function App() {
           <Route index element={<ClientPortal />} />
           <Route path="tickets/:id" element={<TicketDetail />} />
         </Route>
+        <Route path="/campo" element={<InstallerRoute><InstallerLayout /></InstallerRoute>}>
+          <Route index element={<InstallerHome />} />
+          <Route path="bovedas/:siteId/nuevo" element={<InstallerReport />} />
+          <Route path="bovedas/:siteId" element={<InstallerSite />} />
+          <Route path="reportes/:reportId" element={<InstallerReport />} />
+          <Route path=":projectId" element={<InstallerProject />} />
+        </Route>
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
@@ -93,6 +113,10 @@ export default function App() {
           <Route path="calendar" element={<TabRoute tab="calendar"><Calendar /></TabRoute>} />
           <Route path="support" element={<TabRoute tab="support"><Support /></TabRoute>} />
           <Route path="support/:id" element={<TabRoute tab="support"><TicketDetail /></TabRoute>} />
+          <Route path="field" element={<TabRoute tab="field"><FieldOps /></TabRoute>} />
+          <Route path="field/obras/:projectId" element={<TabRoute tab="field"><FieldProject /></TabRoute>} />
+          <Route path="field/bovedas/:siteId" element={<TabRoute tab="field"><FieldSite /></TabRoute>} />
+          <Route path="field/reports/:reportId" element={<TabRoute tab="field"><FieldReportDetail /></TabRoute>} />
           <Route path="settings" element={<AdminRoute><Settings /></AdminRoute>} />
           <Route path="quotes" element={<SuperAdminRoute><Quotes /></SuperAdminRoute>} />
         </Route>

@@ -21,6 +21,7 @@ import chatRoutes from './routes/chat.js'
 import boardRoutes from './routes/board.js'
 import partnerRoutes from './routes/partners.js'
 import supportRoutes, { runSlaCheck } from './routes/support.js'
+import fieldRoutes, { runDailyReportReminder } from './routes/field.js'
 import notesRoutes from './routes/notes.js'
 
 dotenv.config()
@@ -93,6 +94,7 @@ app.use('/api/chat',      chatRoutes)
 app.use('/api/board',     boardRoutes)
 app.use('/api/partners',  partnerRoutes)
 app.use('/api/support',   supportRoutes)
+app.use('/api/field',     fieldRoutes)
 app.use('/api/notes',     notesRoutes)
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
@@ -114,16 +116,24 @@ app.listen(PORT, () => console.log(`API corriendo en puerto ${PORT}`))
 setTimeout(runSlaCheck, 60 * 1000)
 setInterval(runSlaCheck, 30 * 60 * 1000)
 
+// Campo: recordatorio a instaladores sin reporte del día (18:30 hora centro de México, una vez al día)
+let lastReminderDay = null
+setInterval(() => {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Mexico_City' }))
+  const day = now.toDateString()
+  if (now.getHours() === 18 && now.getMinutes() >= 30 && lastReminderDay !== day) { lastReminderDay = day; runDailyReportReminder() }
+}, 5 * 60 * 1000)
+
 // Backfill idempotente: chat y pendientes ahora son configurables por usuario;
 // los usuarios existentes los conservan activados (el admin puede quitarlos después).
 import('@prisma/client').then(async ({ PrismaClient }) => {
   const p = new PrismaClient()
   try {
-    const users = await p.user.findMany({ where: { role: { not: 'CLIENT' } }, select: { id: true, visibleTabs: true } })
+    const users = await p.user.findMany({ where: { role: { notIn: ['CLIENT', 'INSTALLER'] } }, select: { id: true, visibleTabs: true } })
     for (const u of users) {
       const tabs = (u.visibleTabs || '').split(',').map(t => t.trim()).filter(Boolean)
       let changed = false
-      for (const t of ['chat', 'board', 'support']) if (!tabs.includes(t)) { tabs.push(t); changed = true }
+      for (const t of ['chat', 'board', 'support', 'field']) if (!tabs.includes(t)) { tabs.push(t); changed = true }
       if (changed) await p.user.update({ where: { id: u.id }, data: { visibleTabs: tabs.join(',') } })
     }
   } catch (err) {

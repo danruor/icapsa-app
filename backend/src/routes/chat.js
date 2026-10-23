@@ -31,7 +31,7 @@ async function systemMessage(conversationId, content) {
 router.get('/users', async (req, res) => {
   try {
     const users = await prisma.user.findMany({
-      where: { isActive: true, role: { not: 'CLIENT' }, id: { not: req.user.id } },
+      where: { isActive: true, role: { notIn: ['CLIENT', 'INSTALLER'] }, id: { not: req.user.id } },
       select: { id: true, name: true, position: true, role: true },
       orderBy: { name: 'asc' }
     })

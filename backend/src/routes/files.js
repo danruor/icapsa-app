@@ -41,7 +41,7 @@ const upload = multer({
 // Convierte el error del filtro en respuesta legible en vez de crash
 const handleUpload = (req, res, next) => {
   upload.single('file')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'El archivo excede 10MB' : (err.code ? 'Archivo no válido' : err.message) })
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'El archivo excede 10MB' : 'Tipo de archivo no permitido' })
     next()
   })
 }

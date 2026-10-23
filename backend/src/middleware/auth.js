@@ -9,6 +9,12 @@ const CLIENT_ALLOWED = [
   /^\/api\/support(\/|$)/,
   /^\/api\/notifications(\/|$)/
 ]
+// Rutas a las que puede llegar un INSTALADOR: su portal de obra y nada más
+const INSTALLER_ALLOWED = [
+  /^\/api\/auth\/me$/,
+  /^\/api\/field(\/|$)/,
+  /^\/api\/notifications(\/|$)/
+]
 
 export const authenticate = async (req, res, next) => {
   const header = req.headers.authorization
@@ -28,10 +34,11 @@ export const authenticate = async (req, res, next) => {
 
     // Usuarios CLIENTE: aislados en el portal de soporte. Cualquier otra ruta del
     // sistema interno se rechaza aquí, antes de llegar a cualquier controlador.
-    if (user.role === 'CLIENT') {
+    if (user.role === 'CLIENT' || user.role === 'INSTALLER') {
       const full = (req.baseUrl || '') + (req.path || '')
-      if (!CLIENT_ALLOWED.some(rx => rx.test(full)))
-        return res.status(403).json({ error: 'Acceso restringido al portal de clientes' })
+      const allowed = user.role === 'CLIENT' ? CLIENT_ALLOWED : INSTALLER_ALLOWED
+      if (!allowed.some(rx => rx.test(full)))
+        return res.status(403).json({ error: user.role === 'CLIENT' ? 'Acceso restringido al portal de clientes' : 'Acceso restringido al portal de instaladores' })
     }
 
     req.user = user
@@ -62,9 +69,9 @@ export const requireTab = (tab) => (req, res, next) => {
   res.status(403).json({ error: 'No tienes acceso a esta sección' })
 }
 
-// Solo personal interno (cualquier rol excepto CLIENTE)
+// Solo personal interno de oficina (excluye clientes externos e instaladores de campo)
 export const requireStaff = (req, res, next) => {
-  if (req.user.role === 'CLIENT')
+  if (req.user.role === 'CLIENT' || req.user.role === 'INSTALLER')
     return res.status(403).json({ error: 'Solo personal interno' })
   next()
 }

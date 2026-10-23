@@ -109,7 +109,7 @@ const upload = multer({
   }
 })
 const handleUpload = (req, res, next) => upload.single('file')(req, res, (err) => {
-  if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'El archivo excede 10MB' : (err.code ? 'Archivo no válido' : err.message) })
+  if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'El archivo excede 10MB' : 'Tipo de archivo no permitido' })
   next()
 })
 
@@ -124,7 +124,7 @@ router.get('/meta', (req, res) => {
 router.get('/users', requireStaff, async (req, res) => {
   try {
     const [technicians, clients] = await Promise.all([
-      prisma.user.findMany({ where: { isActive: true, role: { not: 'CLIENT' } }, select: { id: true, name: true, position: true }, orderBy: { name: 'asc' } }),
+      prisma.user.findMany({ where: { isActive: true, role: { notIn: ['CLIENT', 'INSTALLER'] } }, select: { id: true, name: true, position: true }, orderBy: { name: 'asc' } }),
       prisma.user.findMany({ where: { isActive: true, role: 'CLIENT' }, select: { id: true, name: true, email: true, company: true, phone: true }, orderBy: [{ company: 'asc' }, { name: 'asc' }] })
     ])
     res.json({ technicians, clients })

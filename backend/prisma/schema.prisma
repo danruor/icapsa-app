@@ -17,7 +17,7 @@ model User {
   phone     String?
   position  String?
   company   String?  // empresa del cliente (rol CLIENT)
-  visibleTabs String @default("projects,inventory,calendar,chat,board,support")
+  visibleTabs String @default("projects,inventory,calendar,chat,board,support,field")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -49,6 +49,10 @@ model User {
   ticketMessages    TicketMessage[]
   ticketAttachments TicketAttachment[]
   ticketVisits      TicketVisit[]      @relation("VisitTechnician")
+  fieldAssignments  FieldAssignment[]
+  fieldReports      FieldReport[]      @relation("ReportAuthor")
+  fieldReportsReviewed FieldReport[]   @relation("ReportReviewer")
+  fieldPhotos       FieldPhoto[]
 }
 
 enum Role {
@@ -57,6 +61,7 @@ enum Role {
   MANAGER
   MEMBER
   CLIENT // usuario externo: solo portal de soporte
+  INSTALLER // instalador de campo: solo portal de obra (reportes diarios)
 }
 
 model Project {
@@ -88,6 +93,9 @@ model Project {
   notes       Note[]  @relation("NoteProjects")
   partnerDeals PartnerDeal[]
   supportTickets SupportTicket[]
+  fieldSites     FieldSite[]
+  fieldAssignments FieldAssignment[]
+  fieldReports   FieldReport[]
 }
 
 enum ProjectStatus {
@@ -744,4 +752,173 @@ model TicketVisit {
   technician   User? @relation("VisitTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
 
   @@index([scheduledAt])
+}
+
+// ===== INSTALACIÓN EN CAMPO (sellado de bóvedas con ROXTEC) =====
+
+// Catálogo de material de campo (marcos GKO, sellos RS, módulos, impermeabilizante...)
+model FieldMaterial {
+  id        String   @id @default(cuid())
+  sku       String?  @unique
+  name      String   // "Marco GKO 4", "Sello RS 75", "Módulo CM 20 w40"
+  category  String   @default("OTHER") // FRAME | SEAL | MODULE | COATING | ACCESSORY | CONSUMABLE | OTHER
+  unit      String   @default("pza")
+  unitCost  Float    @default(0)      // costo unitario de referencia (MXN)
+  currency  String   @default("MXN")
+  isActive  Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usages      FieldMaterialUsage[]
+  allocations FieldAllocation[]
+}
+
+// Bóveda / subestación / registro dentro de una obra
+model FieldSite {
+  id             String   @id @default(cuid())
+  code           String   // "Bóveda 7", "SE-03"
+  name           String?  // "Seminario No. 181 y Moneda"
+  address        String?
+  siteType       String   @default("VAULT") // VAULT | SUBSTATION | MANHOLE | OTHER
+  equipment      String?  // seccionador, derivador, transformador, gabinete...
+  infiltration   String?  // CSV: RAIN,POTABLE,SEWAGE
+  stage          String   @default("PENDING") // PENDING | DEWATERING | WALL_PREP | FORMWORK | SEALING | COATING | DONE
+  status         String   @default("PENDING") // PENDING | IN_PROGRESS | DONE
+  latitude       Float?
+  longitude      Float?
+  notes          String?
+  position       Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  openings FieldOpening[]
+  reports  FieldReport[]
+  photos   FieldPhoto[]
+
+  @@index([projectId, position])
+}
+
+// Ventana pasamuros / punto de sellado dentro de una bóveda
+model FieldOpening {
+  id          String   @id @default(cuid())
+  label       String   // "Ventana pasamuros norte", "Ducto 3"
+  description String?  // tamaño, cables que cruzan...
+  status      String   @default("PENDING") // PENDING | SEALED
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  siteId String
+  site   FieldSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  usages FieldMaterialUsage[]
+  photos FieldPhoto[]
+}
+
+// Instalador asignado a una obra (define qué ve en su portal)
+model FieldAssignment {
+  id        String   @id @default(cuid())
+  isLead    Boolean  @default(false) // responsable de cuadrilla
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+// Material asignado/entregado a una obra (presupuesto de consumo)
+model FieldAllocation {
+  id        String   @id @default(cuid())
+  quantity  Float
+  note      String?
+  createdAt DateTime @default(now())
+
+  projectId  String
+  materialId String
+  material   FieldMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// Reporte diario del instalador por bóveda
+model FieldReport {
+  id          String    @id @default(cuid())
+  folio       String    @unique // RPT-AAAA-NNNN
+  reportDate  DateTime  @default(now())
+  stage       String    @default("SEALING") // etapa trabajada ese día
+  summary     String    // qué se hizo
+  issues      String?   // problemas / bloqueos
+  hoursWorked Float?
+  crewSize    Int?
+  status      String    @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | REJECTED
+  submittedAt DateTime?
+  reviewedAt  DateTime?
+  reviewNote  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  siteId    String
+  site      FieldSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User      @relation("ReportAuthor", fields: [authorId], references: [id])
+  reviewerId String?
+  reviewer   User?    @relation("ReportReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  usages FieldMaterialUsage[]
+  photos FieldPhoto[]
+
+  @@index([projectId, reportDate])
+  @@index([authorId])
+}
+
+// Material consumido (línea de un reporte; opcionalmente por ventana)
+model FieldMaterialUsage {
+  id        String   @id @default(cuid())
+  quantity  Float
+  unitCost  Float    // snapshot del costo al momento del reporte
+  note      String?
+  createdAt DateTime @default(now())
+
+  reportId   String
+  report     FieldReport   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  materialId String
+  material   FieldMaterial @relation(fields: [materialId], references: [id])
+  openingId  String?
+  opening    FieldOpening? @relation(fields: [openingId], references: [id], onDelete: SetNull)
+
+  @@index([reportId])
+  @@index([materialId])
+}
+
+// Foto de evidencia (antes / durante / después)
+model FieldPhoto {
+  id        String   @id @default(cuid())
+  url       String
+  kind      String   @default("DURING") // BEFORE | DURING | AFTER
+  caption   String?
+  size      Int
+  mimeType  String
+  latitude  Float?
+  longitude Float?
+  takenAt   DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  siteId     String
+  site       FieldSite     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  reportId   String?
+  report     FieldReport?  @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  openingId  String?
+  opening    FieldOpening? @relation(fields: [openingId], references: [id], onDelete: SetNull)
+  uploadedById String
+  uploadedBy   User @relation(fields: [uploadedById], references: [id])
+
+  @@index([siteId])
 }

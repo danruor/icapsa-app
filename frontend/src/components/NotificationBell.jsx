@@ -9,7 +9,8 @@ const typeIcon = {
   task_due: '⏰',
   comment: '💬',
   project_added: '📁',
-  ticket: '🎫', ticket_visit: '📅'
+  ticket: '🎫', ticket_visit: '📅',
+  field_assigned: '👷', field_report: '📋', field_review: '✅', field_reminder: '⏰'
 }
 
 export default function NotificationBell({ dark = false }) {

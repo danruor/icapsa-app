@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { parseDate } from '../lib/validate.js'
 import { authenticate, requireTab } from '../middleware/auth.js'
+import { logActivity } from '../lib/events.js'
 import { notify } from '../lib/events.js'
 
 const router = Router()
@@ -69,7 +70,7 @@ router.get('/', async (req, res) => {
 router.get('/users', async (req, res) => {
   try {
     const users = await prisma.user.findMany({
-      where: { isActive: true, role: { not: 'CLIENT' } },
+      where: { isActive: true, role: { notIn: ['CLIENT', 'INSTALLER'] } },
       select: { id: true, name: true, position: true },
       orderBy: { name: 'asc' }
     })
@@ -143,7 +144,12 @@ router.patch('/columns/:id', async (req, res) => {
 // DELETE /api/board/columns/:id — elimina la columna Y sus tarjetas
 router.delete('/columns/:id', async (req, res) => {
   try {
+    // Borrar una columna elimina todas sus tarjetas: solo administradores
+    if (!['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) return res.status(403).json({ error: 'Solo un administrador puede eliminar columnas' })
+    const col = await prisma.boardColumn.findUnique({ where: { id: req.params.id }, include: { _count: { select: { cards: true } } } })
+    if (!col) return res.status(404).json({ error: 'Columna no encontrada' })
     await prisma.boardColumn.delete({ where: { id: req.params.id } })
+    await logActivity({ userId: req.user.id, action: 'board_column_deleted', detail: `eliminó la columna «${col.name}» del tablero (${col._count.cards} tarjetas)` })
     res.json({ message: 'Columna eliminada' })
   } catch {
     res.status(500).json({ error: 'Error al eliminar la columna' })
@@ -266,6 +272,10 @@ router.post('/cards/:id/move', async (req, res) => {
 // DELETE /api/board/cards/:id
 router.delete('/cards/:id', async (req, res) => {
   try {
+    const card = await prisma.boardCard.findUnique({ where: { id: req.params.id } })
+    if (!card) return res.status(404).json({ error: 'Tarjeta no encontrada' })
+    const mine = card.createdById === req.user.id || card.assigneeId === req.user.id
+    if (!mine && !['SUPER_ADMIN', 'ADMIN'].includes(req.user.role)) return res.status(403).json({ error: 'Solo quien creó o tiene asignada la tarjeta (o un administrador) puede eliminarla' })
     await prisma.boardCard.delete({ where: { id: req.params.id } })
     res.json({ message: 'Tarjeta eliminada' })
   } catch {

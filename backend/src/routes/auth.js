@@ -89,7 +89,7 @@ router.get('/me', authenticate, async (req, res) => {
 router.get('/users', authenticate, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
-      where: { isActive: true, role: { not: 'CLIENT' } },
+      where: { isActive: true, role: { notIn: ['CLIENT', 'INSTALLER'] } },
       select: { id: true, name: true, email: true, position: true },
       orderBy: { name: 'asc' }
     })

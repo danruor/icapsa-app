@@ -9,7 +9,8 @@ const ROLES = [
   { value: 'ADMIN',       label: 'Administrador',        desc: 'Gestiona usuarios y proyectos' },
   { value: 'MANAGER',     label: 'Gerente',              desc: 'Gestiona proyectos asignados' },
   { value: 'MEMBER',      label: 'Miembro',              desc: 'Acceso a proyectos asignados' },
-  { value: 'CLIENT',      label: 'Cliente',              desc: 'Portal de soporte: solo levanta y sigue sus tickets' }
+  { value: 'CLIENT',      label: 'Cliente',              desc: 'Portal de soporte: solo levanta y sigue sus tickets' },
+  { value: 'INSTALLER',   label: 'Instalador',           desc: 'Portal de obra: reportes diarios con material y fotos de sus obras asignadas' }
 ]
 
 const roleBadge = {
@@ -17,9 +18,10 @@ const roleBadge = {
   ADMIN:       'bg-blue-100 text-blue-700',
   MANAGER:     'bg-teal-100 text-teal-700',
   MEMBER:      'bg-gray-100 text-gray-600',
-  CLIENT:      'bg-sky-100 text-sky-700'
+  CLIENT:      'bg-sky-100 text-sky-700',
+  INSTALLER:   'bg-amber-100 text-amber-700'
 }
-const roleLabel = { SUPER_ADMIN: 'Super Admin', ADMIN: 'Admin', MANAGER: 'Gerente', MEMBER: 'Miembro', CLIENT: 'Cliente' }
+const roleLabel = { SUPER_ADMIN: 'Super Admin', ADMIN: 'Admin', MANAGER: 'Gerente', MEMBER: 'Miembro', CLIENT: 'Cliente', INSTALLER: 'Instalador' }
 
 export default function Settings() {
   const qc = useQueryClient()
@@ -28,7 +30,7 @@ export default function Settings() {
 
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', company: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar', 'chat', 'board', 'support'] })
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', company: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar', 'chat', 'board', 'support', 'field'] })
   const [projectModal, setProjectModal] = useState(null)
   const [adminTab, setAdminTab] = useState('users') // user being edited for projects
 
@@ -75,7 +77,7 @@ export default function Settings() {
 
   const openNew = () => {
     setEditing(null)
-    setForm({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', company: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar', 'chat', 'board', 'support'] })
+    setForm({ name: '', email: '', password: '', role: 'MEMBER', phone: '', position: '', company: '', projectIds: [], visibleTabs: ['projects', 'inventory', 'calendar', 'chat', 'board', 'support', 'field'] })
     setShowForm(true)
   }
 
@@ -308,13 +310,18 @@ export default function Settings() {
                 </select>
               </div>
 
+              {form.role === 'INSTALLER' && (
+                <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-xs text-amber-800">
+                  👷 Los usuarios <b>Instalador</b> entran a un portal de obra (pensado para el celular): solo ven las obras donde los asignes desde <b>Instalaciones</b>, registran reportes diarios con el material ROXTEC usado y fotos. No ven costos ni ninguna sección interna.
+                </div>
+              )}
               {form.role === 'CLIENT' && (
                 <div className="bg-sky-50 border border-sky-100 rounded-lg px-3 py-2 text-xs text-sky-800">
                   🎫 Los usuarios <b>Cliente</b> entran a un portal aislado: solo pueden levantar tickets de soporte y seguir su atención (conversación, visitas, adjuntos). No ven ninguna sección interna. Comparten la vista con los demás contactos de su misma empresa.
                 </div>
               )}
               {/* Pestañas visibles: solo aplica a roles internos no-admin (admins ven todo) */}
-              {!['SUPER_ADMIN', 'ADMIN', 'CLIENT'].includes(form.role) && (
+              {!['SUPER_ADMIN', 'ADMIN', 'CLIENT', 'INSTALLER'].includes(form.role) && (
                 <div>
                   <label className="block text-xs text-gray-500 mb-2">Pestañas visibles para este usuario</label>
                   <div className="border border-gray-200 rounded-lg p-3 space-y-2">
@@ -329,6 +336,7 @@ export default function Settings() {
                       { key: 'inventory', label: 'Inventario', desc: 'stock, entregas, órdenes de compra y kardex' },
                       { key: 'calendar', label: 'Calendario', desc: 'fechas de proyectos y tareas' },
                       { key: 'support', label: 'Soporte', desc: 'tickets de clientes, visitas y métricas de atención' },
+                      { key: 'field', label: 'Instalaciones', desc: 'obras de sellado, reportes de instaladores, material y costos' },
                       ...(currentUser?.role === 'SUPER_ADMIN' ? [{ key: 'partners', label: 'Sociedad 💼', desc: 'finanzas ICAPSA·socio (costos, utilidades, pagos) — otórgala SOLO a tu socio comercial' }] : [])
                     ].map(tab => (
                       <label key={tab.key} className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:text-gray-900">
@@ -352,7 +360,7 @@ export default function Settings() {
                   Los administradores tienen acceso a todas las pestañas automáticamente.
                 </div>
               )}
-              {!editing && form.role !== 'CLIENT' && (
+              {!editing && !['CLIENT', 'INSTALLER'].includes(form.role) && (
                 <div>
                   <label className="block text-xs text-gray-500 mb-2">Proyectos con acceso</label>
                   <div className="border border-gray-200 rounded-lg p-2 max-h-32 overflow-y-auto space-y-1">

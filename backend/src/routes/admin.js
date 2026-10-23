@@ -48,7 +48,7 @@ router.post('/users', async (req, res) => {
   try {
     let { email, password, name, role, phone, position, projectIds, visibleTabs, company } = req.body
     if (email) email = email.trim().toLowerCase()
-    if (!['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'MEMBER', 'CLIENT'].includes(role || 'MEMBER'))
+    if (!['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'MEMBER', 'CLIENT', 'INSTALLER'].includes(role || 'MEMBER'))
       return res.status(400).json({ error: 'Rol inválido' })
     if (role === 'CLIENT' && !(company || '').trim())
       return res.status(400).json({ error: 'Un usuario cliente necesita su empresa' })
@@ -71,7 +71,7 @@ router.post('/users', async (req, res) => {
         role: role || 'MEMBER', phone, position,
         company: role === 'CLIENT' ? String(company).trim().slice(0, 80) : null,
         // Los clientes externos no tienen pestañas internas: solo su portal
-        ...(role === 'CLIENT' ? { visibleTabs: '' } : (Array.isArray(visibleTabs) && { visibleTabs: await sanitizeTabs(visibleTabs, req) })),
+        ...(['CLIENT', 'INSTALLER'].includes(role) ? { visibleTabs: '' } : (Array.isArray(visibleTabs) && { visibleTabs: await sanitizeTabs(visibleTabs, req) })),
         ...(role !== 'CLIENT' && projectIds?.length && {
           projects: {
             create: projectIds.map(pid => ({ projectId: pid, role: role || 'MEMBER' }))
@@ -94,7 +94,7 @@ router.patch('/users/:id', async (req, res) => {
     const { name, role, phone, position, isActive, password, visibleTabs, company } = req.body
     const target = await prisma.user.findUnique({ where: { id: req.params.id } })
     if (!target) return res.status(404).json({ error: 'Usuario no encontrado' })
-    if (role !== undefined && !['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'MEMBER', 'CLIENT'].includes(role))
+    if (role !== undefined && !['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'MEMBER', 'CLIENT', 'INSTALLER'].includes(role))
       return res.status(400).json({ error: 'Rol inválido' })
     const finalRole = role !== undefined ? role : target.role
     if (finalRole === 'CLIENT' && !((company !== undefined ? company : target.company) || '').trim())
@@ -118,7 +118,9 @@ router.patch('/users/:id', async (req, res) => {
       ...(company !== undefined && { company: finalRole === 'CLIENT' ? String(company).trim().slice(0, 80) : null }),
       ...(finalRole === 'CLIENT'
         ? { visibleTabs: '', company: String(company !== undefined ? company : target.company).trim().slice(0, 80) }
-        : (Array.isArray(visibleTabs) && { visibleTabs: await sanitizeTabs(visibleTabs, req) }))
+        : finalRole === 'INSTALLER'
+          ? { visibleTabs: '' }
+          : (Array.isArray(visibleTabs) && { visibleTabs: await sanitizeTabs(visibleTabs, req) }))
     }
     if (password && password.length < 8)
       return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' })
