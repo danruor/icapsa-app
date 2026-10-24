@@ -186,7 +186,12 @@ router.get('/tickets/:id', async (req, res) => {
         include: { author: { select: { id: true, name: true, role: true, company: true } }, attachments: true },
         orderBy: { createdAt: 'asc' }
       },
-      attachments: { include: { uploadedBy: { select: { id: true, name: true, role: true } } }, orderBy: { createdAt: 'asc' } },
+      attachments: {
+        // El cliente no debe ver adjuntos ligados a notas internas del equipo
+        where: isClient(req) ? { OR: [{ messageId: null }, { message: { kind: { not: 'INTERNAL' } } }] } : {},
+        include: { uploadedBy: { select: { id: true, name: true, role: true } } },
+        orderBy: { createdAt: 'asc' }
+      },
       visits: { include: { technician: USER_SEL }, orderBy: { scheduledAt: 'asc' } }
     })
     if (!t) return
@@ -227,7 +232,7 @@ router.post('/tickets', async (req, res) => {
         company = clean(req.body.company, 80) || null
       }
       if (req.body.assigneeId) {
-        const tech = await prisma.user.findFirst({ where: { id: clean(req.body.assigneeId, 40), role: { not: 'CLIENT' }, isActive: true }, select: { id: true } })
+        const tech = await prisma.user.findFirst({ where: { id: clean(req.body.assigneeId, 40), role: { notIn: ['CLIENT', 'INSTALLER'] }, isActive: true }, select: { id: true } })
         if (!tech) return res.status(400).json({ error: 'Técnico no válido' })
         assigneeId = tech.id
       }
@@ -294,7 +299,7 @@ router.patch('/tickets/:id', requireStaff, async (req, res) => {
     let newAssignee = null
     if (req.body.assigneeId !== undefined && (req.body.assigneeId || null) !== t.assigneeId) {
       if (req.body.assigneeId) {
-        newAssignee = await prisma.user.findFirst({ where: { id: clean(req.body.assigneeId, 40), role: { not: 'CLIENT' }, isActive: true }, select: { id: true, name: true } })
+        newAssignee = await prisma.user.findFirst({ where: { id: clean(req.body.assigneeId, 40), role: { notIn: ['CLIENT', 'INSTALLER'] }, isActive: true }, select: { id: true, name: true } })
         if (!newAssignee) return res.status(400).json({ error: 'Técnico no válido' })
         data.assigneeId = newAssignee.id
         events.push(`Asignado a ${newAssignee.name} por ${req.user.name}`)
@@ -430,9 +435,12 @@ router.post('/tickets/:id/attachments', async (req, res, next) => {
 // POST /api/support/tickets/:id/rate — el cliente confirma la solución y califica (cierra el ticket)
 router.post('/tickets/:id/rate', async (req, res) => {
   try {
+    // Solo el cliente califica la atención (el personal cierra con PATCH status=CLOSED)
+    if (!isClient(req)) return res.status(403).json({ error: 'Solo el cliente puede calificar la atención' })
     const t = await loadTicket(req, res)
     if (!t) return
     if (!['RESOLVED', 'CLOSED'].includes(t.status)) return res.status(400).json({ error: 'El ticket aún no está resuelto' })
+    if (t.status === 'CLOSED' && t.rating != null) return res.status(400).json({ error: 'Este ticket ya fue calificado' })
     const rating = num(req.body.rating, { min: 1, max: 5 })
     if (rating === null) return res.status(400).json({ error: 'Calificación de 1 a 5' })
     const comment = clean(req.body.comment, 500) || null
@@ -488,7 +496,7 @@ router.post('/tickets/:id/visits', requireStaff, async (req, res) => {
     const durationMin = num(req.body.durationMin ?? 120, { min: 15, max: 1440 }) ?? 120
     let technician = null
     if (req.body.technicianId) {
-      technician = await prisma.user.findFirst({ where: { id: clean(req.body.technicianId, 40), role: { not: 'CLIENT' }, isActive: true }, select: { id: true, name: true } })
+      technician = await prisma.user.findFirst({ where: { id: clean(req.body.technicianId, 40), role: { notIn: ['CLIENT', 'INSTALLER'] }, isActive: true }, select: { id: true, name: true } })
       if (!technician) return res.status(400).json({ error: 'Técnico no válido' })
     }
     const visit = await prisma.ticketVisit.create({
@@ -523,7 +531,7 @@ router.patch('/visits/:id', requireStaff, async (req, res) => {
     if (req.body.durationMin !== undefined) { const n = num(req.body.durationMin, { min: 15, max: 1440 }); if (n !== null) data.durationMin = Math.round(n) }
     if (req.body.technicianId !== undefined) {
       if (req.body.technicianId) {
-        const tech = await prisma.user.findFirst({ where: { id: clean(req.body.technicianId, 40), role: { not: 'CLIENT' }, isActive: true }, select: { id: true, name: true } })
+        const tech = await prisma.user.findFirst({ where: { id: clean(req.body.technicianId, 40), role: { notIn: ['CLIENT', 'INSTALLER'] }, isActive: true }, select: { id: true, name: true } })
         if (!tech) return res.status(400).json({ error: 'Técnico no válido' })
         data.technicianId = tech.id
         if (tech.id !== v.technicianId) events.push(`Visita reasignada a ${tech.name}`)

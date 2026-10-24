@@ -39,7 +39,8 @@ export default function Calendar() {
     ? projects.map(p => p.id)
     : activeProjects
 
-  const events = allEvents.filter(e => visibleProjectIds.includes(e.projectId))
+  // Las visitas de soporte no pertenecen a un proyecto (projectId null): siempre visibles
+  const events = allEvents.filter(e => e.projectId == null || visibleProjectIds.includes(e.projectId))
 
   const toggleProject = (id) => {
     const base = activeProjects === null ? projects.map(p => p.id) : activeProjects

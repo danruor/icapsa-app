@@ -119,6 +119,12 @@ function parseItems(raw) {
 
 // Si un concepto del contrato se marcó "guardar en catálogo", se crea ahí primero
 async function materializeCatalog(items, userId) {
+  // Un conceptId que ya no existe en el catálogo se desvincula (evita error FK → 500)
+  const ids = [...new Set(items.map(it => it.conceptId).filter(Boolean))]
+  if (ids.length) {
+    const found = new Set((await prisma.partnerConcept.findMany({ where: { id: { in: ids } }, select: { id: true } })).map(c => c.id))
+    for (const it of items) if (it.conceptId && !found.has(it.conceptId)) it.conceptId = null
+  }
   for (const it of items) {
     if (it._save && !it.conceptId) {
       const c = await prisma.partnerConcept.create({
@@ -950,6 +956,9 @@ router.post('/competitor-prices', async (req, res) => {
     if (!competitor?.trim()) return res.status(400).json({ error: 'El nombre del competidor es requerido' })
     const price = num(req.body.price, { min: 0, max: 1e12 })
     if (price === null) return res.status(400).json({ error: 'Precio inválido' })
+    let cid = typeof conceptId === 'string' && conceptId ? conceptId.slice(0, 40) : null
+    if (cid && !(await prisma.partnerConcept.findUnique({ where: { id: cid }, select: { id: true } })))
+      return res.status(400).json({ error: 'El concepto vinculado no existe' })
 
     const rec = await prisma.partnerCompetitorPrice.create({
       data: {
@@ -959,7 +968,7 @@ router.post('/competitor-prices', async (req, res) => {
         priceType: priceType === 'COST' ? 'COST' : 'SALE',
         context: context?.trim().slice(0, 200) || null,
         notes: notes?.trim().slice(0, 300) || null,
-        conceptId: typeof conceptId === 'string' && conceptId ? conceptId.slice(0, 40) : null,
+        conceptId: cid,
         date: parseDate(date) || new Date(),
         createdById: req.user.id
       }

@@ -1,6 +1,6 @@
 {
   "name": "icapsa-backend",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "type": "module",
   "scripts": {
     "dev": "nodemon src/index.js",
@@ -27,5 +27,8 @@
   "devDependencies": {
     "nodemon": "^3.0.3",
     "prisma": "^5.10.0"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }
